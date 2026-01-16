@@ -1,0 +1,19 @@
+I2C custom buses for Raspberry Pi (Ubuntu 24.04)
+
+Add these lines to /boot/firmware/config.txt on the robot, then reboot.
+
+# Enable the default I2C bus (GPIO2/3 -> /dev/i2c-1)
+dtparam=i2c_arm=on
+
+# Custom I2C bus on GPIO17 (SDA) and GPIO27 (SCL)
+# This creates /dev/i2c-3 (bus number may vary)
+dtoverlay=i2c-gpio,bus=3,i2c_gpio_sda=17,i2c_gpio_scl=27,i2c_gpio_delay_us=2
+
+# Custom I2C bus on GPIO5 (SDA) and GPIO4 (SCL)
+# This creates /dev/i2c-4 (bus number may vary)
+dtoverlay=i2c-gpio,bus=4,i2c_gpio_sda=5,i2c_gpio_scl=4,i2c_gpio_delay_us=2
+
+Notes:
+- If bus numbers already exist, pick unused values.
+- After reboot, verify with: ls /dev/i2c-*  and  i2cdetect -y <bus>.
+- OLEDs typically use address 0x3C or 0x3D.
