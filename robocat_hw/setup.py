@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'pi_status_node = robocat_hw.pi_status_node:main',
         ],
     },
 )
