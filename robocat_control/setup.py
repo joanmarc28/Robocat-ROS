@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'cmd_node = robocat_control.cmd_node:main',
         ],
     },
 )
