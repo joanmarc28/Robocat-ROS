@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'pi_status_node = robocat_hw.pi_status_node:main',
+            'oled_message_node = robocat_hw.oled_message_node:main',
         ],
     },
 )
