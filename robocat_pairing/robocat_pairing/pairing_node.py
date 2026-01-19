@@ -317,8 +317,14 @@ class PairingNode(Node):
                 continue
             expires_in = auth.get("expires_in")
             expires_at = None
+            expires_at_raw = auth.get("expires_at")
             if isinstance(expires_in, (int, float)):
                 expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
+            elif isinstance(expires_at_raw, str) and expires_at_raw:
+                try:
+                    expires_at = datetime.fromisoformat(expires_at_raw.replace("Z", "+00:00"))
+                except ValueError:
+                    expires_at = None
             self._write_access_token(token, expires_at)
             self._publish_state("PAIRED")
             time.sleep(max(10.0, retry_sec))
