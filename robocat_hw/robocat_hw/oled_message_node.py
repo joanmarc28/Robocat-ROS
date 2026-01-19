@@ -172,7 +172,7 @@ class OledMessageNode(Node):
 
     def _show_qr(self, url: str) -> None:
         if Image is None or ImageDraw is None or qrcode is None:
-            self._show_text(["QR no disponible"])
+            self._show_text("QR no disponible")
             return
         qr = qrcode.QRCode(
             error_correction=qrcode.constants.ERROR_CORRECT_L,
