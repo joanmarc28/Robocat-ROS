@@ -32,6 +32,7 @@ class WebTelemetryNode(Node):
         self._access_token_mtime: Optional[float] = None
         self._identity_robot_id: Optional[str] = None
         self._identity_mtime: Optional[float] = None
+        self._last_warning_at: float = 0.0
 
         self.create_subscription(DiagnosticArray, "pi_status", self._on_status, 10)
 
@@ -119,10 +120,12 @@ class WebTelemetryNode(Node):
         while not self._stop.is_set():
             url = self.get_parameter("telemetry_url").value or self.get_parameter("server_url").value
             if not url:
+                self._warn_throttled("telemetry_url is empty.")
                 time.sleep(1.0)
                 continue
             token = self._load_access_token()
             if not token:
+                self._warn_throttled("No access_token.json yet. Waiting for pairing/auth.")
                 time.sleep(1.0)
                 continue
             interval = 1.0 / float(self.get_parameter("publish_hz").value)
@@ -142,11 +145,21 @@ class WebTelemetryNode(Node):
                     try:
                         response = requests.post(url, json=payload, headers=headers, timeout=5)
                         if response.status_code >= 400:
-                            self.get_logger().warning(f"Telemetry POST error: {response.status_code}")
+                            detail = response.text.strip()
+                            self.get_logger().warning(
+                                f"Telemetry POST error: {response.status_code} {detail}"
+                            )
                     except requests.RequestException as exc:
                         self.get_logger().warning(f"Telemetry POST error: {exc}")
                         break
                 time.sleep(interval)
+
+    def _warn_throttled(self, message: str) -> None:
+        now = time.time()
+        if now - self._last_warning_at < 10.0:
+            return
+        self._last_warning_at = now
+        self.get_logger().warning(message)
 
 
 def main() -> None:
