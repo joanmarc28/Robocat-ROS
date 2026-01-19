@@ -9,6 +9,7 @@ pairing_node:
     access_token_path: "/home/robocat-v2/.robocat/access_token.json"
     token_ttl_sec: 300
     retry_sec: 2.0
+    auth_refresh_sec: 600
     show_qr: true
     oled_text_topic: "oled_text"
     oled_qr_topic: "oled_qr"

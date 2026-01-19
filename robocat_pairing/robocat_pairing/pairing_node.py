@@ -45,6 +45,7 @@ class PairingNode(Node):
         self.declare_parameter("access_token_path", "/var/lib/robocat/access_token.json")
         self.declare_parameter("token_ttl_sec", 300)
         self.declare_parameter("retry_sec", 2.0)
+        self.declare_parameter("auth_refresh_sec", 600)
         self.declare_parameter("show_qr", True)
         self.declare_parameter("oled_text_topic", "oled_text")
         self.declare_parameter("oled_qr_topic", "oled_qr")
@@ -132,6 +133,20 @@ class PairingNode(Node):
             path.unlink()
         except OSError:
             pass
+
+    def _read_access_token_expiry(self) -> Optional[datetime]:
+        path = self._access_token_path()
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        expires_at = data.get("expires_at")
+        if not expires_at:
+            return None
+        try:
+            return datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        except ValueError:
+            return None
 
     def _make_robot_id(self) -> str:
         return str(uuid.uuid4())
@@ -298,7 +313,16 @@ class PairingNode(Node):
 
     def _auth_loop(self, identity: Identity) -> Optional[Identity]:
         retry_sec = float(self.get_parameter("retry_sec").value)
+        auth_refresh_sec = float(self.get_parameter("auth_refresh_sec").value)
         while not self._stop.is_set() and identity.device_secret:
+            existing_expiry = self._read_access_token_expiry()
+            if existing_expiry:
+                now = datetime.now(timezone.utc)
+                buffer_sec = 60.0
+                if existing_expiry > now + timedelta(seconds=buffer_sec):
+                    sleep_sec = (existing_expiry - now).total_seconds() - buffer_sec
+                    time.sleep(max(5.0, sleep_sec))
+                    continue
             auth = self._auth_robot(identity)
             if auth is None:
                 time.sleep(retry_sec)
@@ -327,7 +351,13 @@ class PairingNode(Node):
                     expires_at = None
             self._write_access_token(token, expires_at)
             self._publish_state("PAIRED")
-            time.sleep(max(10.0, retry_sec))
+            if expires_at:
+                now = datetime.now(timezone.utc)
+                buffer_sec = 60.0
+                sleep_sec = max(10.0, (expires_at - now).total_seconds() - buffer_sec)
+            else:
+                sleep_sec = max(10.0, auth_refresh_sec)
+            time.sleep(sleep_sec)
         return identity
 
     def _run(self) -> None:
