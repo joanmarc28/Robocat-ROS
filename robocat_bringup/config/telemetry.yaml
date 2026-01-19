@@ -1,6 +1,6 @@
 web_telemetry_node:
   ros__parameters:
     telemetry_url: "https://europerobotics.jmprojects.cat/api/telemetry"
-    publish_hz: 1.0
+    publish_hz: 0.2
     access_token_path: "/home/robocat-v2/.robocat/access_token.json"
     identity_path: "/home/robocat-v2/.robocat/identity.json"
