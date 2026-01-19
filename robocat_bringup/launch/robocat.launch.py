@@ -17,6 +17,7 @@ def generate_launch_description():
             output="screen",
             parameters=[pairing_params],
         ),
+        Node(package="robocat_hw", executable="pi_status_node", output="screen"),
         Node(package="robocat_hw", executable="oled_message_node", output="screen"),
         Node(package="robocat_hw", executable="telemetry_node", output="screen"),
         Node(
