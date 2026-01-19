@@ -1,4 +1,5 @@
 import textwrap
+from urllib.parse import urlparse, parse_qs
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -171,8 +172,12 @@ class OledMessageNode(Node):
         self._show_qr(url)
 
     def _show_qr(self, url: str) -> None:
+        token = self._extract_token(url)
         if Image is None or ImageDraw is None or qrcode is None:
-            self._show_text("QR no disponible")
+            if token:
+                self._show_text(f"Token: {token}")
+            else:
+                self._show_text("QR no disponible")
             return
         qr = qrcode.QRCode(
             error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -182,13 +187,25 @@ class OledMessageNode(Node):
         qr.add_data(url)
         qr.make(fit=True)
         qr_image = qr.make_image(fill_color="black", back_color="white").convert("1")
+        label_text = "Escaneja"
+        if token:
+            label_text = f"Escaneja\n{token}"
         label = self._format_message(
-            "Escaneja",
+            label_text,
             self.get_parameter("width").value,
             self.get_parameter("line_height").value,
             self._font,
         )
         self._show_qr_image(qr_image, label)
+
+    def _extract_token(self, url: str) -> str:
+        try:
+            parsed = urlparse(url)
+        except Exception:
+            return ""
+        query = parse_qs(parsed.query)
+        token = query.get("token", [""])[0]
+        return token.strip()
 
     def _show_qr_image(self, qr_image: "Image.Image", label_lines: List[str]) -> None:
         for display in (self._left, self._right):
