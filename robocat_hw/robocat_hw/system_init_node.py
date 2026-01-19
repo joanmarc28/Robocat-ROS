@@ -11,7 +11,7 @@ from diagnostic_msgs.msg import DiagnosticArray
 class SystemInitNode(Node):
     def __init__(self) -> None:
         super().__init__("system_init_node")
-        self.declare_parameter("server_host", "")
+        self.declare_parameter("server_host", "europerobotics.jmprojects.cat")
         self.declare_parameter("server_port", 443)
         self.declare_parameter("pi_status_timeout_sec", 5.0)
 

@@ -3,6 +3,8 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     return LaunchDescription([
+        Node(package="robocat_pairing", executable="pairing_node", output="screen"),
+        Node(package="robocat_hw", executable="oled_message_node", output="screen"),
         Node(package="robocat_hw", executable="telemetry_node", output="screen"),
         Node(package="robocat_control", executable="cmd_node", output="screen"),
     ])

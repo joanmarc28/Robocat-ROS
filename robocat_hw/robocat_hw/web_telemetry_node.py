@@ -2,6 +2,7 @@ import asyncio
 import json
 import socket
 import threading
+from pathlib import Path
 from typing import Dict, Optional
 
 import rclpy
@@ -17,13 +18,17 @@ except ImportError:
 class WebTelemetryNode(Node):
     def __init__(self) -> None:
         super().__init__("web_telemetry_node")
-        self.declare_parameter("server_url", "")
-        self.declare_parameter("robot_id", socket.gethostname())
+        self.declare_parameter("server_url", "europerobotics.jmprojects.cat")
+        #self.declare_parameter("robot_id", socket.gethostname())
+        self.declare_parameter("robot_id", "robocat-001")
         self.declare_parameter("publish_hz", 1.0)
+        self.declare_parameter("access_token_path", "/var/lib/robocat/access_token.json")
 
         self._latest: Optional[Dict[str, str]] = None
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        self._access_token: Optional[str] = None
+        self._access_token_mtime: Optional[float] = None
 
         self.create_subscription(DiagnosticArray, "pi_status", self._on_status, 10)
 
@@ -52,6 +57,31 @@ class WebTelemetryNode(Node):
             "metrics": snapshot,
         }
 
+    def _load_access_token(self) -> Optional[str]:
+        path = Path(self.get_parameter("access_token_path").value)
+        try:
+            stat = path.stat()
+        except OSError:
+            self._access_token = None
+            self._access_token_mtime = None
+            return None
+        if self._access_token_mtime == stat.st_mtime and self._access_token:
+            return self._access_token
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            self._access_token = None
+            self._access_token_mtime = None
+            return None
+        token = data.get("access_token")
+        if not token:
+            self._access_token = None
+            self._access_token_mtime = None
+            return None
+        self._access_token = token
+        self._access_token_mtime = stat.st_mtime
+        return token
+
     def _run(self) -> None:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -66,11 +96,21 @@ class WebTelemetryNode(Node):
             if not url:
                 await asyncio.sleep(1.0)
                 continue
+            token = self._load_access_token()
+            if not token:
+                await asyncio.sleep(1.0)
+                continue
             try:
-                async with websockets.connect(url) as websocket:
+                async with websockets.connect(
+                    url,
+                    extra_headers=[("Authorization", f"Bearer {token}")],
+                ) as websocket:
                     self.get_logger().info("Connected to telemetry server.")
                     interval = 1.0 / float(self.get_parameter("publish_hz").value)
                     while not self._stop.is_set():
+                        new_token = self._load_access_token()
+                        if not new_token or new_token != token:
+                            break
                         payload = self._make_payload()
                         if payload is not None:
                             await websocket.send(json.dumps(payload))

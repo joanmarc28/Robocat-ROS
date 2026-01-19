@@ -21,6 +21,11 @@ except ImportError:
     ImageDraw = None
     ImageFont = None
 
+try:
+    import qrcode
+except ImportError:
+    qrcode = None
+
 
 class OledDisplay:
     def __init__(self, bus: int, address: int, width: int, height: int):
@@ -42,6 +47,26 @@ class OledDisplay:
         self._device.display(image)
 
     def show_image(self, image: "Image.Image") -> None:
+        self._device.display(image)
+
+    def show_qr(
+        self,
+        qr_image: "Image.Image",
+        lines: List[str],
+        font: "ImageFont.ImageFont",
+        line_height: int,
+    ) -> None:
+        if Image is None or ImageDraw is None:
+            raise RuntimeError("Pillow is not installed")
+        image = Image.new("1", (self._width, self._height))
+        qr_size = min(self._height, self._width // 2)
+        qr_resized = qr_image.resize((qr_size, qr_size))
+        image.paste(qr_resized, (0, 0))
+        draw = ImageDraw.Draw(image)
+        x_offset = qr_size + 4
+        for idx, line in enumerate(lines):
+            y = idx * line_height
+            draw.text((x_offset, y), line, font=font, fill=255)
         self._device.display(image)
 
 
@@ -76,6 +101,7 @@ class OledMessageNode(Node):
         self._show_text(self.get_parameter("message").value)
 
         self._text_sub = self.create_subscription(String, "oled_text", self._on_text, 10)
+        self._qr_sub = self.create_subscription(String, "oled_qr", self._on_qr, 10)
         self._anim_sub = self.create_subscription(String, "oled_anim", self._on_anim, 10)
         self.get_logger().info("OLED message node ready.")
 
@@ -136,6 +162,38 @@ class OledMessageNode(Node):
     def _on_text(self, msg: String) -> None:
         self._stop_anim()
         self._show_text(msg.data)
+
+    def _on_qr(self, msg: String) -> None:
+        url = msg.data.strip()
+        if not url:
+            return
+        self._stop_anim()
+        self._show_qr(url)
+
+    def _show_qr(self, url: str) -> None:
+        if Image is None or ImageDraw is None or qrcode is None:
+            self._show_text(["QR no disponible"])
+            return
+        qr = qrcode.QRCode(
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            border=1,
+            box_size=2,
+        )
+        qr.add_data(url)
+        qr.make(fit=True)
+        qr_image = qr.make_image(fill_color="black", back_color="white").convert("1")
+        label = self._format_message(
+            "Escaneja",
+            self.get_parameter("width").value,
+            self.get_parameter("line_height").value,
+            self._font,
+        )
+        self._show_qr_image(qr_image, label)
+
+    def _show_qr_image(self, qr_image: "Image.Image", label_lines: List[str]) -> None:
+        for display in (self._left, self._right):
+            if display is not None:
+                display.show_qr(qr_image, label_lines, self._font, self.get_parameter("line_height").value)
 
     def _on_anim(self, msg: String) -> None:
         folder = msg.data.strip()

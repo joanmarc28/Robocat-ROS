@@ -1,0 +1,14 @@
+pairing_node:
+  ros__parameters:
+    api_base_url: "https://europerobotics.jmprojects.cat"
+    app_base_url: "https://europerobotics.jmprojects.cat"
+    robot_type: "ROBOCAT"
+    serial_number: "0000 0000 0000 0001"
+    firmware_version: "v2.0.0"
+    identity_path: "/var/lib/robocat/identity.json"
+    access_token_path: "/var/lib/robocat/access_token.json"
+    token_ttl_sec: 300
+    retry_sec: 2.0
+    show_qr: true
+    oled_text_topic: "oled_text"
+    oled_qr_topic: "oled_qr"
