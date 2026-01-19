@@ -5,8 +5,8 @@ pairing_node:
     robot_type: "ROBOCAT"
     serial_number: "0000 0000 0000 0001"
     firmware_version: "v2.0.0"
-    identity_path: "/var/lib/robocat/identity.json"
-    access_token_path: "/var/lib/robocat/access_token.json"
+    identity_path: "/home/robocat-v2/.robocat/identity.json"
+    access_token_path: "/home/robocat-v2/.robocat/access_token.json"
     token_ttl_sec: 300
     retry_sec: 2.0
     show_qr: true
