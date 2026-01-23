@@ -1,8 +1,17 @@
 import asyncio
 import json
+import os
 from pathlib import Path
+import sys
 import threading
 from typing import Any, Dict, Optional
+
+# Allow running with system python while loading venv packages (aiortc/av).
+_venv_path = os.environ.get("VIRTUAL_ENV")
+if _venv_path:
+    _site = Path(_venv_path) / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+    if _site.exists() and str(_site) not in sys.path:
+        sys.path.insert(0, str(_site))
 
 import rclpy
 from rclpy.node import Node
