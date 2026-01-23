@@ -34,7 +34,10 @@ class WebTelemetryNode(Node):
         self._identity_mtime: Optional[float] = None
         self._last_warning_at: float = 0.0
 
-        self.create_subscription(DiagnosticArray, "pi_status", self._on_status, 10)
+        self.declare_parameter("pi_status_topic", "pi_status")
+        self.declare_parameter("sensors_topic", "robot_sensors")
+        self.create_subscription(DiagnosticArray, self.get_parameter("pi_status_topic").value, self._on_status, 10)
+        self.create_subscription(DiagnosticArray, self.get_parameter("sensors_topic").value, self._on_status, 10)
 
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -42,14 +45,18 @@ class WebTelemetryNode(Node):
     def _on_status(self, msg: DiagnosticArray) -> None:
         if not msg.status:
             return
-        status = msg.status[0]
-        metrics = {item.key: item.value for item in status.values}
-        metrics["status_name"] = status.name
-        metrics["status_level"] = str(status.level)
-        metrics["status_message"] = status.message
-        metrics["hardware_id"] = status.hardware_id
+        updates = {}
+        for status in msg.status:
+            prefix = status.name or "status"
+            for item in status.values:
+                updates[f"{prefix}.{item.key}"] = item.value
+            updates[f"{prefix}.status_level"] = str(status.level)
+            updates[f"{prefix}.status_message"] = status.message
+            updates[f"{prefix}.hardware_id"] = status.hardware_id
         with self._lock:
-            self._latest = metrics
+            if self._latest is None:
+                self._latest = {}
+            self._latest.update(updates)
 
     def _make_payload(self) -> Optional[Dict[str, object]]:
         with self._lock:

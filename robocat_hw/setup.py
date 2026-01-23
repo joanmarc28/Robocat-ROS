@@ -25,9 +25,9 @@ setup(
     entry_points={
         'console_scripts': [
             'pi_status_node = robocat_hw.pi_status_node:main',
+            'sensors_node = robocat_hw.sensors_node:main',
             'oled_message_node = robocat_hw.oled_message_node:main',
             'system_init_node = robocat_hw.system_init_node:main',
-            'telemetry_node = robocat_hw.telemetry_node:main',
             'web_telemetry_node = robocat_hw.web_telemetry_node:main',
         ],
     },
