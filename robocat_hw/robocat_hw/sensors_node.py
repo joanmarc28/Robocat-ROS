@@ -12,9 +12,9 @@ except ImportError:
     smbus2 = None
 
 try:
-    import pigpio
+    import lgpio
 except ImportError:
-    pigpio = None
+    lgpio = None
 
 
 class SensorsNode(Node):
@@ -28,11 +28,12 @@ class SensorsNode(Node):
         self.declare_parameter("ultrasonic_trig", 8)
         self.declare_parameter("ultrasonic_echo", 23)
         self.declare_parameter("ultrasonic_timeout_sec", 0.02)
+        self.declare_parameter("ultrasonic_gpiochip", 0)
 
         self._bus: Optional["smbus2.SMBus"] = None
         self._accel_addr: Optional[int] = None
         self._ultrasonic_ready = False
-        self._pi = None
+        self._gpio_handle = None
 
         self._publisher = self.create_publisher(DiagnosticArray, "robot_sensors", 10)
 
@@ -62,17 +63,16 @@ class SensorsNode(Node):
     def _init_ultrasonic(self) -> None:
         if not bool(self.get_parameter("ultrasonic_enabled").value):
             return
-        if pigpio is None:
-            self.get_logger().warning("pigpio is not installed. Ultrasonic disabled.")
+        if lgpio is None:
+            self.get_logger().warning("python3-lgpio is not installed. Ultrasonic disabled.")
             return
         trig = int(self.get_parameter("ultrasonic_trig").value)
         echo = int(self.get_parameter("ultrasonic_echo").value)
+        chip = int(self.get_parameter("ultrasonic_gpiochip").value)
         try:
-            self._pi = pigpio.pi()
-            if not self._pi.connected:
-                raise RuntimeError("pigpio daemon not running")
-            self._pi.set_mode(trig, pigpio.OUTPUT)
-            self._pi.set_mode(echo, pigpio.INPUT)
+            self._gpio_handle = lgpio.gpiochip_open(chip)
+            lgpio.gpio_claim_output(self._gpio_handle, trig, 0)
+            lgpio.gpio_claim_input(self._gpio_handle, echo)
             self._ultrasonic_ready = True
         except Exception as exc:
             self.get_logger().warning(f"Ultrasonic init failed: {exc}")
@@ -135,22 +135,22 @@ class SensorsNode(Node):
         echo = int(self.get_parameter("ultrasonic_echo").value)
         timeout = float(self.get_parameter("ultrasonic_timeout_sec").value)
         try:
-            self._pi.write(trig, 0)
+            lgpio.gpio_write(self._gpio_handle, trig, 0)
             time.sleep(0.0002)
-            self._pi.write(trig, 1)
+            lgpio.gpio_write(self._gpio_handle, trig, 1)
             time.sleep(0.00001)
-            self._pi.write(trig, 0)
+            lgpio.gpio_write(self._gpio_handle, trig, 0)
 
             start_time = time.time()
             start = start_time
-            while self._pi.read(echo) == 0 and (time.time() - start_time) < timeout:
+            while lgpio.gpio_read(self._gpio_handle, echo) == 0 and (time.time() - start_time) < timeout:
                 start = time.time()
             if (time.time() - start_time) >= timeout:
                 return None
 
             start_time = time.time()
             end = start_time
-            while self._pi.read(echo) == 1 and (time.time() - start_time) < timeout:
+            while lgpio.gpio_read(self._gpio_handle, echo) == 1 and (time.time() - start_time) < timeout:
                 end = time.time()
             if (time.time() - start_time) >= timeout:
                 return None
@@ -215,9 +215,9 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        if pigpio is not None and node._pi is not None:
+        if lgpio is not None and node._gpio_handle is not None:
             try:
-                node._pi.stop()
+                lgpio.gpiochip_close(node._gpio_handle)
             except Exception:
                 pass
         node.destroy_node()
