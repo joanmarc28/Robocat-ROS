@@ -12,9 +12,9 @@ except ImportError:
     smbus2 = None
 
 try:
-    import RPi.GPIO as GPIO
+    import pigpio
 except ImportError:
-    GPIO = None
+    pigpio = None
 
 
 class SensorsNode(Node):
@@ -32,6 +32,7 @@ class SensorsNode(Node):
         self._bus: Optional["smbus2.SMBus"] = None
         self._accel_addr: Optional[int] = None
         self._ultrasonic_ready = False
+        self._pi = None
 
         self._publisher = self.create_publisher(DiagnosticArray, "robot_sensors", 10)
 
@@ -61,15 +62,17 @@ class SensorsNode(Node):
     def _init_ultrasonic(self) -> None:
         if not bool(self.get_parameter("ultrasonic_enabled").value):
             return
-        if GPIO is None:
-            self.get_logger().warning("RPi.GPIO is not installed. Ultrasonic disabled.")
+        if pigpio is None:
+            self.get_logger().warning("pigpio is not installed. Ultrasonic disabled.")
             return
         trig = int(self.get_parameter("ultrasonic_trig").value)
         echo = int(self.get_parameter("ultrasonic_echo").value)
         try:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(trig, GPIO.OUT)
-            GPIO.setup(echo, GPIO.IN)
+            self._pi = pigpio.pi()
+            if not self._pi.connected:
+                raise RuntimeError("pigpio daemon not running")
+            self._pi.set_mode(trig, pigpio.OUTPUT)
+            self._pi.set_mode(echo, pigpio.INPUT)
             self._ultrasonic_ready = True
         except Exception as exc:
             self.get_logger().warning(f"Ultrasonic init failed: {exc}")
@@ -132,22 +135,22 @@ class SensorsNode(Node):
         echo = int(self.get_parameter("ultrasonic_echo").value)
         timeout = float(self.get_parameter("ultrasonic_timeout_sec").value)
         try:
-            GPIO.output(trig, False)
+            self._pi.write(trig, 0)
             time.sleep(0.0002)
-            GPIO.output(trig, True)
+            self._pi.write(trig, 1)
             time.sleep(0.00001)
-            GPIO.output(trig, False)
+            self._pi.write(trig, 0)
 
             start_time = time.time()
             start = start_time
-            while GPIO.input(echo) == 0 and (time.time() - start_time) < timeout:
+            while self._pi.read(echo) == 0 and (time.time() - start_time) < timeout:
                 start = time.time()
             if (time.time() - start_time) >= timeout:
                 return None
 
             start_time = time.time()
             end = start_time
-            while GPIO.input(echo) == 1 and (time.time() - start_time) < timeout:
+            while self._pi.read(echo) == 1 and (time.time() - start_time) < timeout:
                 end = time.time()
             if (time.time() - start_time) >= timeout:
                 return None
@@ -212,9 +215,9 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        if GPIO is not None:
+        if pigpio is not None and node._pi is not None:
             try:
-                GPIO.cleanup()
+                node._pi.stop()
             except Exception:
                 pass
         node.destroy_node()
