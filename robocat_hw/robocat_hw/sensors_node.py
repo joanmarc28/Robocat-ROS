@@ -193,6 +193,7 @@ class SensorsNode(Node):
         if dist is None:
             ultra_status.level = DiagnosticStatus.WARN
             ultra_status.message = "No echo"
+            ultra_status.values.append(KeyValue(key="distance_cm", value="nan"))
         else:
             ultra_status.values.append(KeyValue(key="distance_cm", value=str(dist)))
         statuses.append(ultra_status)
