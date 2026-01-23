@@ -10,6 +10,9 @@ def generate_launch_description():
     telemetry_params = PathJoinSubstitution(
         [FindPackageShare("robocat_bringup"), "config", "telemetry.yaml"]
     )
+    webrtc_params = PathJoinSubstitution(
+        [FindPackageShare("robocat_bringup"), "config", "webrtc.yaml"]
+    )
     return LaunchDescription([
         Node(
             package="robocat_pairing",
@@ -25,6 +28,18 @@ def generate_launch_description():
             executable="web_telemetry_node",
             output="screen",
             parameters=[telemetry_params],
+        ),
+        Node(
+            package="robocat_video",
+            executable="webrtc_streamer_node",
+            output="screen",
+            parameters=[webrtc_params],
+        ),
+        Node(
+            package="robocat_video",
+            executable="webrtc_signaling_node",
+            output="screen",
+            parameters=[webrtc_params],
         ),
         Node(package="robocat_control", executable="cmd_node", output="screen"),
     ])

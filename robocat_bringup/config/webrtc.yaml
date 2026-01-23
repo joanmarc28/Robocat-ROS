@@ -1,0 +1,22 @@
+webrtc_streamer_node:
+  ros__parameters:
+    # Example command. Replace with your final pipeline.
+    # This is a placeholder until we define the signaling server.
+    webrtc_command: "gst-launch-1.0 -e videotestsrc is-live=true ! videoconvert ! vp8enc deadline=1 ! rtpvp8pay ! fakesink"
+    auto_start: false
+    restart_on_exit: true
+    restart_delay_sec: 2.0
+
+webrtc_signaling_node:
+  ros__parameters:
+    enabled: true
+    # Backend API base (signaling endpoints live under /video/*).
+    api_base_url: "https://europerobotics.jmprojects.cat"
+    access_token_path: "/home/robocat-v2/.robocat/access_token.json"
+    offer_poll_sec: 1.0
+    ice_poll_sec: 1.0
+    camera_device: "/dev/video0"
+    camera_format: "v4l2"
+    camera_width: 1280
+    camera_height: 720
+    camera_fps: 30
