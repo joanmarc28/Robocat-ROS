@@ -367,20 +367,20 @@ class WebRtcSignalingNode(Node):
                 if robot_id:
                     answer_payload["robot_id"] = robot_id
                 await self._http_post_json(answer_url, headers, answer_payload)
-                except Exception as exc:
-                    if bool(self.get_parameter("debug_signaling").value):
-                        sdp_preview = sdp[:120].replace("\r", "\\r").replace("\n", "\\n") if isinstance(sdp, str) else str(sdp)
-                        self.get_logger().warning(
-                            "Offer debug: type=%s len=%s stream_token=%s sdp=%s",
-                            sdp_type,
-                            len(sdp) if isinstance(sdp, str) else "n/a",
-                            stream_token or "",
-                            sdp_preview,
-                        )
-                    self.get_logger().warning(f"WebRTC negotiation failed: {exc}")
-                    await pc.close()
-                    await asyncio.sleep(offer_poll_sec)
-                    continue
+            except Exception as exc:
+                if bool(self.get_parameter("debug_signaling").value):
+                    sdp_preview = sdp[:120].replace("\r", "\\r").replace("\n", "\\n") if isinstance(sdp, str) else str(sdp)
+                    self.get_logger().warning(
+                        "Offer debug: type=%s len=%s stream_token=%s sdp=%s",
+                        sdp_type,
+                        len(sdp) if isinstance(sdp, str) else "n/a",
+                        stream_token or "",
+                        sdp_preview,
+                    )
+                self.get_logger().warning(f"WebRTC negotiation failed: {exc}")
+                await pc.close()
+                await asyncio.sleep(offer_poll_sec)
+                continue
 
             ice_task = asyncio.create_task(self._poll_remote_ice(pc, headers))
             self.get_logger().info("WebRTC connected, streaming video.")
