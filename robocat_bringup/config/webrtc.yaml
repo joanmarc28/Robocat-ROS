@@ -25,7 +25,7 @@ webrtc_signaling_node:
     ice_poll_sec: 1.0
     camera_device: "/dev/video0"
     camera_format: "v4l2"
-    camera_pixel_format: "uyvy422"
+    camera_pixel_format: "rgb24"
     camera_width: 1280
     camera_height: 720
     camera_fps: 30
