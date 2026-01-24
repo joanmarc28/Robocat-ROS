@@ -45,7 +45,7 @@ class WebRtcSignalingNode(Node):
         self.declare_parameter("video_offer_path", "/offer")
         self.declare_parameter("video_answer_path", "/answer")
         self.declare_parameter("offer_query", "")
-        self.declare_parameter("ice_query", "")
+        self.declare_parameter("ice_query", "role=robot")
         self.declare_parameter("include_robot_id", True)
         self.declare_parameter("include_stream_token", True)
         self.declare_parameter("debug_signaling", False)
@@ -242,11 +242,19 @@ class WebRtcSignalingNode(Node):
             payload, _ = await self._http_get_json(ice_url, headers)
             for cand in self._parse_candidates(payload):
                 try:
-                    candidate = RTCIceCandidate(
-                        candidate=cand.get("candidate"),
-                        sdpMid=cand.get("sdpMid"),
-                        sdpMLineIndex=cand.get("sdpMLineIndex"),
-                    )
+                    cand_payload = cand.get("candidate", cand)
+                    if isinstance(cand_payload, dict):
+                        candidate = RTCIceCandidate(
+                            candidate=cand_payload.get("candidate"),
+                            sdpMid=cand_payload.get("sdpMid"),
+                            sdpMLineIndex=cand_payload.get("sdpMLineIndex"),
+                        )
+                    else:
+                        candidate = RTCIceCandidate(
+                            candidate=cand.get("candidate"),
+                            sdpMid=cand.get("sdpMid"),
+                            sdpMLineIndex=cand.get("sdpMLineIndex"),
+                        )
                     await pc.addIceCandidate(candidate)
                 except Exception as exc:
                     self.get_logger().warning(f"Failed to add ICE candidate: {exc}")
@@ -320,12 +328,17 @@ class WebRtcSignalingNode(Node):
                 if candidate is None:
                     return
                 payload = {
-                    "candidate": candidate.to_sdp(),
-                    "sdpMid": candidate.sdpMid,
-                    "sdpMLineIndex": candidate.sdpMLineIndex,
+                    "direction": "robot",
+                    "candidate": {
+                        "candidate": candidate.to_sdp(),
+                        "sdpMid": candidate.sdpMid,
+                        "sdpMLineIndex": candidate.sdpMLineIndex,
+                    },
                 }
                 if stream_token:
                     payload["stream_token"] = stream_token
+                if robot_id:
+                    payload["robot_id"] = robot_id
                 await self._http_post_json(f"{self._video_base_url()}/ice", headers, payload)
 
             device = str(self.get_parameter("camera_device").value)

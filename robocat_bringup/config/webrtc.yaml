@@ -16,7 +16,7 @@ webrtc_signaling_node:
     video_offer_path: "/offer"
     video_answer_path: "/offer"
     offer_query: ""
-    ice_query: ""
+    ice_query: "role=robot"
     include_robot_id: true
     include_stream_token: true
     identity_path: "/home/robocat-v2/.robocat/identity.json"
