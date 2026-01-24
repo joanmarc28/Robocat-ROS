@@ -42,6 +42,13 @@ class WebRtcSignalingNode(Node):
         self.declare_parameter("enabled", True)
         self.declare_parameter("api_base_url", "https://europerobotics.jmprojects.cat")
         self.declare_parameter("video_base_path", "/api/video")
+        self.declare_parameter("video_offer_path", "/offer")
+        self.declare_parameter("video_answer_path", "/answer")
+        self.declare_parameter("offer_query", "")
+        self.declare_parameter("ice_query", "")
+        self.declare_parameter("include_robot_id", True)
+        self.declare_parameter("include_stream_token", True)
+        self.declare_parameter("identity_path", "/home/robocat-v2/.robocat/identity.json")
         self.declare_parameter("access_token_path", "/home/robocat-v2/.robocat/access_token.json")
         self.declare_parameter("offer_poll_sec", 1.0)
         self.declare_parameter("ice_poll_sec", 1.0)
@@ -113,6 +120,29 @@ class WebRtcSignalingNode(Node):
         if not path.startswith("/"):
             path = "/" + path
         return f"{base}{path}"
+
+    def _build_url(self, base: str, query: str) -> str:
+        query = query.strip()
+        if not query:
+            return base
+        if query.startswith("?"):
+            return f"{base}{query}"
+        return f"{base}?{query}"
+
+    def _load_robot_id(self) -> Optional[str]:
+        if not bool(self.get_parameter("include_robot_id").value):
+            return None
+        path = Path(self.get_parameter("identity_path").value)
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+        value = data.get("robot_id")
+        if not value:
+            return None
+        return str(value)
 
     async def _http_get_json(
         self, url: str, headers: Dict[str, str]
@@ -202,6 +232,8 @@ class WebRtcSignalingNode(Node):
 
     async def _poll_remote_ice(self, pc: RTCPeerConnection, headers: Dict[str, str]) -> None:
         ice_url = f"{self._video_base_url()}/ice"
+        ice_query = str(self.get_parameter("ice_query").value).strip()
+        ice_url = self._build_url(ice_url, ice_query)
         poll_sec = float(self.get_parameter("ice_poll_sec").value)
         while not self._stop.is_set():
             if pc.connectionState in ("failed", "closed"):
@@ -224,8 +256,14 @@ class WebRtcSignalingNode(Node):
             self.get_logger().info("WebRTC signaling disabled (enabled=false).")
             return
 
-        offer_url = f"{self._video_base_url()}/offer"
-        answer_url = f"{self._video_base_url()}/answer"
+        offer_path = str(self.get_parameter("video_offer_path").value).strip()
+        answer_path = str(self.get_parameter("video_answer_path").value).strip()
+        if not offer_path.startswith("/"):
+            offer_path = "/" + offer_path
+        if not answer_path.startswith("/"):
+            answer_path = "/" + answer_path
+        offer_url = f"{self._video_base_url()}{offer_path}"
+        answer_url = f"{self._video_base_url()}{answer_path}"
         offer_poll_sec = float(self.get_parameter("offer_poll_sec").value)
 
         while not self._stop.is_set():
@@ -235,14 +273,37 @@ class WebRtcSignalingNode(Node):
                 continue
 
             headers = {"x-robot-token": token}
-            offer_payload, offer_status = await self._http_get_json(offer_url, headers)
+            offer_query = str(self.get_parameter("offer_query").value).strip()
+            robot_id = self._load_robot_id()
+            if robot_id and "robot_id=" not in offer_query:
+                if offer_query:
+                    offer_query = f"{offer_query}&robot_id={robot_id}"
+                else:
+                    offer_query = f"robot_id={robot_id}"
+            offer_url_with_query = self._build_url(offer_url, offer_query)
+
+            offer_payload, offer_status = await self._http_get_json(offer_url_with_query, headers)
             if offer_status == 405:
                 offer_payload, _ = await self._http_post_json_response(
-                    offer_url, headers, {}
+                    offer_url_with_query, headers, {}
                 )
             if not offer_payload:
                 await asyncio.sleep(offer_poll_sec)
                 continue
+
+            if "offer" in offer_payload:
+                nested = offer_payload.get("offer")
+                if isinstance(nested, dict):
+                    if not offer_payload.get("stream_token") and nested.get("stream_token"):
+                        offer_payload["stream_token"] = nested.get("stream_token")
+                    offer_payload = nested
+                elif nested is None:
+                    await asyncio.sleep(offer_poll_sec)
+                    continue
+
+            stream_token = ""
+            if bool(self.get_parameter("include_stream_token").value):
+                stream_token = str(offer_payload.get("stream_token", "")).strip()
 
             sdp = offer_payload.get("sdp")
             sdp_type = offer_payload.get("type", "offer")
@@ -262,6 +323,8 @@ class WebRtcSignalingNode(Node):
                     "sdpMid": candidate.sdpMid,
                     "sdpMLineIndex": candidate.sdpMLineIndex,
                 }
+                if stream_token:
+                    payload["stream_token"] = stream_token
                 await self._http_post_json(f"{self._video_base_url()}/ice", headers, payload)
 
             device = str(self.get_parameter("camera_device").value)
@@ -294,11 +357,15 @@ class WebRtcSignalingNode(Node):
                 await pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type=sdp_type))
                 answer = await pc.createAnswer()
                 await pc.setLocalDescription(answer)
-                await self._http_post_json(
-                    answer_url,
-                    headers,
-                    {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type},
-                )
+                answer_payload = {
+                    "sdp": pc.localDescription.sdp,
+                    "type": pc.localDescription.type,
+                }
+                if stream_token:
+                    answer_payload["stream_token"] = stream_token
+                if robot_id:
+                    answer_payload["robot_id"] = robot_id
+                await self._http_post_json(answer_url, headers, answer_payload)
             except Exception as exc:
                 self.get_logger().warning(f"WebRTC negotiation failed: {exc}")
                 await pc.close()
