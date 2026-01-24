@@ -274,6 +274,7 @@ class WebRtcSignalingNode(Node):
             answer_path = "/" + answer_path
         offer_url = f"{self._video_base_url()}{offer_path}"
         answer_url = f"{self._video_base_url()}{answer_path}"
+        ice_post_url = f"{self._video_base_url()}/ice"
         offer_poll_sec = float(self.get_parameter("offer_poll_sec").value)
 
         while not self._stop.is_set():
@@ -328,6 +329,10 @@ class WebRtcSignalingNode(Node):
             async def on_icecandidate(candidate) -> None:
                 if candidate is None:
                     return
+                if not stream_token:
+                    if bool(self.get_parameter("debug_signaling").value):
+                        self.get_logger().warning("ICE candidate ignored (missing stream_token).")
+                    return
                 payload = {
                     "direction": "robot",
                     "candidate": {
@@ -336,11 +341,15 @@ class WebRtcSignalingNode(Node):
                         "sdpMLineIndex": candidate.sdpMLineIndex,
                     },
                 }
-                if stream_token:
-                    payload["stream_token"] = stream_token
+                payload["stream_token"] = stream_token
                 if robot_id:
                     payload["robot_id"] = robot_id
-                await self._http_post_json(f"{self._video_base_url()}/ice", headers, payload)
+                ok = await self._http_post_json(ice_post_url, headers, payload)
+                if bool(self.get_parameter("debug_signaling").value):
+                    status = "ok" if ok else "failed"
+                    self.get_logger().info(
+                        f"POST /video/ice ({status}) stream_token={stream_token}"
+                    )
 
             device = str(self.get_parameter("camera_device").value)
             camera_format = str(self.get_parameter("camera_format").value)
