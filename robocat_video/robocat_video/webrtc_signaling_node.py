@@ -114,9 +114,11 @@ class WebRtcSignalingNode(Node):
             path = "/" + path
         return f"{base}{path}"
 
-    async def _http_get_json(self, url: str, headers: Dict[str, str]) -> Optional[Dict[str, Any]]:
+    async def _http_get_json(
+        self, url: str, headers: Dict[str, str]
+    ) -> tuple[Optional[Dict[str, Any]], Optional[int]]:
         if not self._session:
-            return None
+            return None, None
         try:
             response = await asyncio.to_thread(
                 self._session.get,
@@ -126,17 +128,17 @@ class WebRtcSignalingNode(Node):
             )
         except Exception as exc:
             self.get_logger().warning(f"HTTP GET failed: {exc}")
-            return None
+            return None, None
         if response.status_code in (204, 404):
-            return None
+            return None, response.status_code
         if response.status_code >= 400:
             self.get_logger().warning(f"HTTP GET {url} -> {response.status_code}")
-            return None
+            return None, response.status_code
         try:
-            return response.json()
+            return response.json(), response.status_code
         except Exception as exc:
             self.get_logger().warning(f"Invalid JSON from {url}: {exc}")
-            return None
+            return None, response.status_code
 
     async def _http_post_json(
         self, url: str, headers: Dict[str, str], payload: Dict[str, Any]
@@ -159,6 +161,33 @@ class WebRtcSignalingNode(Node):
             return False
         return True
 
+    async def _http_post_json_response(
+        self, url: str, headers: Dict[str, str], payload: Dict[str, Any]
+    ) -> tuple[Optional[Dict[str, Any]], Optional[int]]:
+        if not self._session:
+            return None, None
+        try:
+            response = await asyncio.to_thread(
+                self._session.post,
+                url,
+                headers=headers,
+                json=payload,
+                timeout=10,
+            )
+        except Exception as exc:
+            self.get_logger().warning(f"HTTP POST failed: {exc}")
+            return None, None
+        if response.status_code in (204, 404):
+            return None, response.status_code
+        if response.status_code >= 400:
+            self.get_logger().warning(f"HTTP POST {url} -> {response.status_code}")
+            return None, response.status_code
+        try:
+            return response.json(), response.status_code
+        except Exception as exc:
+            self.get_logger().warning(f"Invalid JSON from {url}: {exc}")
+            return None, response.status_code
+
     def _parse_candidates(self, payload: Any) -> list[Dict[str, Any]]:
         if payload is None:
             return []
@@ -177,7 +206,7 @@ class WebRtcSignalingNode(Node):
         while not self._stop.is_set():
             if pc.connectionState in ("failed", "closed"):
                 return
-            payload = await self._http_get_json(ice_url, headers)
+            payload, _ = await self._http_get_json(ice_url, headers)
             for cand in self._parse_candidates(payload):
                 try:
                     candidate = RTCIceCandidate(
@@ -206,7 +235,11 @@ class WebRtcSignalingNode(Node):
                 continue
 
             headers = {"x-robot-token": token}
-            offer_payload = await self._http_get_json(offer_url, headers)
+            offer_payload, offer_status = await self._http_get_json(offer_url, headers)
+            if offer_status == 405:
+                offer_payload, _ = await self._http_post_json_response(
+                    offer_url, headers, {}
+                )
             if not offer_payload:
                 await asyncio.sleep(offer_poll_sec)
                 continue
