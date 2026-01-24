@@ -371,11 +371,8 @@ class WebRtcSignalingNode(Node):
                 if bool(self.get_parameter("debug_signaling").value):
                     sdp_preview = sdp[:120].replace("\r", "\\r").replace("\n", "\\n") if isinstance(sdp, str) else str(sdp)
                     self.get_logger().warning(
-                        "Offer debug: type=%s len=%s stream_token=%s sdp=%s",
-                        sdp_type,
-                        len(sdp) if isinstance(sdp, str) else "n/a",
-                        stream_token or "",
-                        sdp_preview,
+                        f"Offer debug: type={sdp_type} len={len(sdp) if isinstance(sdp, str) else 'n/a'} "
+                        f"stream_token={stream_token or ''} sdp={sdp_preview}"
                     )
                 self.get_logger().warning(f"WebRTC negotiation failed: {exc}")
                 await pc.close()
