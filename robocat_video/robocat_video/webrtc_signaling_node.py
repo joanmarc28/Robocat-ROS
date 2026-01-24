@@ -55,6 +55,7 @@ class WebRtcSignalingNode(Node):
         self.declare_parameter("ice_poll_sec", 1.0)
         self.declare_parameter("camera_device", "/dev/video0")
         self.declare_parameter("camera_format", "v4l2")
+        self.declare_parameter("camera_pixel_format", "")
         self.declare_parameter("camera_width", 1280)
         self.declare_parameter("camera_height", 720)
         self.declare_parameter("camera_fps", 30)
@@ -343,6 +344,7 @@ class WebRtcSignalingNode(Node):
 
             device = str(self.get_parameter("camera_device").value)
             camera_format = str(self.get_parameter("camera_format").value)
+            pixel_format = str(self.get_parameter("camera_pixel_format").value).strip()
             width = int(self.get_parameter("camera_width").value)
             height = int(self.get_parameter("camera_height").value)
             fps = int(self.get_parameter("camera_fps").value)
@@ -352,6 +354,8 @@ class WebRtcSignalingNode(Node):
                 options["video_size"] = f"{width}x{height}"
             if fps > 0:
                 options["framerate"] = str(fps)
+            if pixel_format:
+                options["pixel_format"] = pixel_format
 
             try:
                 player = MediaPlayer(device, format=camera_format, options=options)
