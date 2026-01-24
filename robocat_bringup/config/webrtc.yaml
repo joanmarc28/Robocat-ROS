@@ -12,6 +12,7 @@ webrtc_signaling_node:
     enabled: true
     # Backend API base (signaling endpoints live under /video/*).
     api_base_url: "https://europerobotics.jmprojects.cat"
+    video_base_path: "/api/video"
     access_token_path: "/home/robocat-v2/.robocat/access_token.json"
     offer_poll_sec: 1.0
     ice_poll_sec: 1.0

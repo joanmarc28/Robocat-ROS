@@ -41,6 +41,7 @@ class WebRtcSignalingNode(Node):
         super().__init__("webrtc_signaling_node")
         self.declare_parameter("enabled", True)
         self.declare_parameter("api_base_url", "https://europerobotics.jmprojects.cat")
+        self.declare_parameter("video_base_path", "/api/video")
         self.declare_parameter("access_token_path", "/home/robocat-v2/.robocat/access_token.json")
         self.declare_parameter("offer_poll_sec", 1.0)
         self.declare_parameter("ice_poll_sec", 1.0)
@@ -106,6 +107,13 @@ class WebRtcSignalingNode(Node):
         base = str(self.get_parameter("api_base_url").value).strip().rstrip("/")
         return base
 
+    def _video_base_url(self) -> str:
+        base = self._base_url()
+        path = str(self.get_parameter("video_base_path").value).strip()
+        if not path.startswith("/"):
+            path = "/" + path
+        return f"{base}{path}"
+
     async def _http_get_json(self, url: str, headers: Dict[str, str]) -> Optional[Dict[str, Any]]:
         if not self._session:
             return None
@@ -164,7 +172,7 @@ class WebRtcSignalingNode(Node):
         return []
 
     async def _poll_remote_ice(self, pc: RTCPeerConnection, headers: Dict[str, str]) -> None:
-        ice_url = f"{self._base_url()}/video/ice"
+        ice_url = f"{self._video_base_url()}/ice"
         poll_sec = float(self.get_parameter("ice_poll_sec").value)
         while not self._stop.is_set():
             if pc.connectionState in ("failed", "closed"):
@@ -187,8 +195,8 @@ class WebRtcSignalingNode(Node):
             self.get_logger().info("WebRTC signaling disabled (enabled=false).")
             return
 
-        offer_url = f"{self._base_url()}/video/offer"
-        answer_url = f"{self._base_url()}/video/answer"
+        offer_url = f"{self._video_base_url()}/offer"
+        answer_url = f"{self._video_base_url()}/answer"
         offer_poll_sec = float(self.get_parameter("offer_poll_sec").value)
 
         while not self._stop.is_set():
@@ -221,7 +229,7 @@ class WebRtcSignalingNode(Node):
                     "sdpMid": candidate.sdpMid,
                     "sdpMLineIndex": candidate.sdpMLineIndex,
                 }
-                await self._http_post_json(f"{self._base_url()}/video/ice", headers, payload)
+                await self._http_post_json(f"{self._video_base_url()}/ice", headers, payload)
 
             device = str(self.get_parameter("camera_device").value)
             camera_format = str(self.get_parameter("camera_format").value)
