@@ -1,0 +1,13 @@
+[Unit]
+Description=Robocat camera pipeline (rpicam -> v4l2loopback)
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/robocat_cam.sh
+Restart=always
+RestartSec=2
+User=root
+Group=video
+
+[Install]
+WantedBy=multi-user.target
