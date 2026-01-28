@@ -13,6 +13,9 @@ def generate_launch_description():
     webrtc_params = PathJoinSubstitution(
         [FindPackageShare("robocat_bringup"), "config", "webrtc.yaml"]
     )
+    audio_params = PathJoinSubstitution(
+        [FindPackageShare("robocat_bringup"), "config", "audio.yaml"]
+    )
     return LaunchDescription([
         Node(
             package="robocat_pairing",
@@ -28,6 +31,18 @@ def generate_launch_description():
             executable="web_telemetry_node",
             output="screen",
             parameters=[telemetry_params],
+        ),
+        Node(
+            package="robocat_hw",
+            executable="speaker_node",
+            output="screen",
+            parameters=[audio_params],
+        ),
+        Node(
+            package="robocat_hw",
+            executable="mic_node",
+            output="screen",
+            parameters=[audio_params],
         ),
         Node(
             package="robocat_video",

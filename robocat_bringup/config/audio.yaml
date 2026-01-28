@@ -1,0 +1,38 @@
+speaker_node:
+  ros__parameters:
+    sounds_dir: "/home/robocat-v2/robocat_ws/src/Robocat-ROS/robocat_hw/assets/sounds_clean"
+    audio_device: "default"
+    tts_enabled: true
+    tts_cmd: "espeak"
+    tts_voice: "ca"
+    tts_speed: 140
+    emotion_sounds:
+      happy: ["cute_1_clean.wav", "cute_2_clean.wav"]
+      sad: ["sad_1_clean.wav"]
+      angry: ["angry_1_clean.wav", "angry_2_clean.wav"]
+      neutral: ["neutral_1_clean.wav", "neutral_2_clean.wav"]
+      sick: ["sick_1_clean.wav"]
+      funny: ["funny_1_clean.wav"]
+      drink: ["drink_1_clean.wav"]
+      purr: ["purr_1_clean.wav"]
+      hiss: ["hiss_1_clean.wav"]
+      siren: ["siren_1_clean.wav"]
+
+mic_node:
+  ros__parameters:
+    enabled: false
+    stt_backend: "vosk"
+    wake_word: "hola"
+    language: "ca-ES"
+    device_index: -1
+    vosk_model_path: "/home/robocat-v2/.vosk/model"
+    vosk_model_map:
+      ca: "/home/robocat-v2/.vosk/ca"
+      es: "/home/robocat-v2/.vosk/es"
+      en: "/home/robocat-v2/.vosk/en"
+    sample_rate: 16000
+    timeout: 6.0
+    phrase_time_limit: 5.0
+    publish_only_on_wake: false
+    wake_threshold: 0.5
+    pause_sec: 0.3
