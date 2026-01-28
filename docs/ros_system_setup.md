@@ -102,6 +102,7 @@ sudo systemctl status robocat-cam.service
 ## 6) Audio (speaker + mic)
 ### 6.1 Dependencies
 ```
+sudo apt install -y alsa-utils
 sudo apt install -y python3-vosk python3-sounddevice
 ```
 
@@ -129,6 +130,21 @@ mic_node:
 ros2 topic pub /audio/play_file std_msgs/String "data: 'cute_1_clean.wav'"
 ros2 topic pub /audio/say std_msgs/String "data: 'Hola, soc el Robocat'"
 ros2 topic pub /audio/emotion std_msgs/String "data: 'happy'"
+```
+
+### 6.5 Diagnòstic ALSA (si no sona)
+```
+aplay -l
+speaker-test -t wav -c 2
+aplay /home/robocat-v2/robocat_ws/src/Robocat-ROS/robocat_hw/assets/sounds_clean/cute_1_clean.wav
+```
+Per I2S (MAX98357) el dispositiu surt a `aplay -l` com:
+```
+card 2: sndrpihifiberry [snd_rpi_hifiberry_dac], device 0: ...
+```
+Per això l’ALSA device correcte és:
+```
+audio_device: "plughw:2,0"
 ```
 
 ## 7) Logs utils

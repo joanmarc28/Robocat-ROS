@@ -1,7 +1,7 @@
 speaker_node:
   ros__parameters:
     sounds_dir: "/home/robocat-v2/robocat_ws/src/Robocat-ROS/robocat_hw/assets/sounds_clean"
-    audio_device: "default"
+    audio_device: "plughw:2,0"
     tts_enabled: true
     tts_cmd: "espeak"
     tts_voice: "ca"
