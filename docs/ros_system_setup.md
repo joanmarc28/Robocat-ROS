@@ -1,8 +1,14 @@
-# Robocat ROS - Setup i comandes
+# Robocat ROS - Setup i documentacio completa
 
-Aquest document recull les comandes principals per configurar i arrancar el sistema ROS actual.
+Aquest document recull tot el necessari per executar el robot amb ROS2, connectar-lo al backend i controlar-lo des de la web.
 
-## 1) Build del workspace
+## 0) Estructura de sistema (resum)
+- Robot (ROS2): envia telemetria per HTTP i rep comandes via WS.
+- Backend (FastAPI): rep telemetria, guarda a BD, envia comandes via WS.
+- Web: UI per canviar idioma i control de moviments.
+- BD (PostgreSQL): guarda telemetria i marca ONLINE/OFFLINE.
+
+## 1) Build del workspace ROS
 ```
 cd ~/robocat_ws
 colcon build --symlink-install
@@ -14,14 +20,25 @@ source install/setup.bash
 ros2 launch robocat_bringup robocat.launch.py
 ```
 
-## 3) Pairing i telemetria (ja integrat)
-- El pairing es fa sol en arrencar amb `pairing_node`.
-- La telemetria es publica via `web_telemetry_node`.
+## 3) Pairing i telemetria
+### 3.1 Pairing (automatic)
+El pairing es fa sol en arrencar amb `pairing_node`.
+Config:
+`robocat_bringup/config/pairing.yaml`
+
+### 3.2 Telemetria (HTTP)
+El robot publica telemetria via HTTP:
+`robocat_bringup/config/telemetry.yaml`
+```
+telemetry_url: "https://europerobotics.jmprojects.cat/api/telemetry"
+```
+Node:
+`robocat_hw/web_telemetry_node.py`
 
 ## 4) WebRTC (robot)
 ### 4.1 Node de signaling
-Ja inclos a `robocat.launch.py`:
-- `webrtc_signaling_node` amb config a `robocat_bringup/config/webrtc.yaml`
+Inclòs a `robocat.launch.py`:
+- `webrtc_signaling_node` (config `robocat_bringup/config/webrtc.yaml`)
 
 ### 4.2 Video estable amb rpicam + v4l2loopback
 **Carrega el loopback:**
@@ -102,8 +119,7 @@ sudo systemctl status robocat-cam.service
 ## 6) Audio (speaker + mic)
 ### 6.1 Dependencies
 ```
-sudo apt install -y alsa-utils
-sudo apt install -y python3-venv portaudio19-dev
+sudo apt install -y alsa-utils python3-venv portaudio19-dev
 python3 -m venv ~/.venvs/robocat-webrtc
 source ~/.venvs/robocat-webrtc/bin/activate
 pip install vosk sounddevice
@@ -147,7 +163,7 @@ ros2 topic pub /audio/say std_msgs/String "data: 'Hola, soc el Robocat'"
 ros2 topic pub /audio/emotion std_msgs/String "data: 'happy'"
 ```
 
-### 6.6 Diagn??stic ALSA (si no sona)
+### 6.6 Diagnostic ALSA (si no sona)
 ```
 aplay -l
 speaker-test -t wav -c 2
@@ -157,14 +173,116 @@ Per I2S (MAX98357) el dispositiu surt a `aplay -l` com:
 ```
 card 2: sndrpihifiberry [snd_rpi_hifiberry_dac], device 0: ...
 ```
-Per aix?? l???ALSA device correcte ??s:
+L'ALSA device correcte:
 ```
 audio_device: "plughw:2,0"
 ```
 
-## 7) Logs utils
+## 7) I2C + servos (PCA9685)
+### 7.1 Activar I2C (Ubuntu Server)
+```
+echo "dtparam=i2c_arm=on" | sudo tee -a /boot/firmware/config.txt
+sudo modprobe i2c-dev
+echo "i2c-dev" | sudo tee -a /etc/modules
+sudo reboot
+```
+
+### 7.2 Detectar dispositius
+```
+ls /dev/i2c-*
+sudo i2cdetect -y 1
+```
+Esperat: dispositiu a `0x40` (PCA9685).
+
+### 7.3 Llibreries Python (system)
+```
+sudo apt install -y python3-rpi.gpio
+sudo python3 -m pip install --break-system-packages \
+  adafruit-blinka adafruit-circuitpython-pca9685 adafruit-circuitpython-motor
+```
+
+## 8) Comandes de moviment (web -> backend -> robot)
+### 8.1 Backend
+Endpoint nou:
+```
+POST /api/robots/:id/movement
+Body: { "action": "endavant" | "enrere" | "rotar" | ... }
+```
+
+### 8.2 Robot
+El node `ws_command_node` escolta `/ws/telemetria` i publica a:
+```
+/robocat/cmd
+```
+Configuracio:
+`robocat_bringup/config/commands.yaml`
+
+### 8.3 ROS cmd_node
+`robocat_control/cmd_node.py` executa les comandes:
+- endavant, enrere, rotar, maneta
+- ajupir, normal, hind_sit, recte, strech, up, calibrar
+- demo
+
+## 9) WebSocket de comandes
+### 9.1 Robot
+`robocat_hw/ws_command_node.py`:
+- WS a `/ws/telemetria`
+- token via `robot_token` (query param)
+
+### 9.2 Backend
+WebSocket:
+```
+wss://europerobotics.jmprojects.cat/ws/telemetria
+```
+
+### 9.3 Nginx (proxy WS)
+```
+location /ws/telemetria {
+    proxy_pass http://127.0.0.1:8013/ws/telemetria;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 60s;
+    proxy_send_timeout 60s;
+}
+```
+
+### 9.4 Backend websockets
+Assegura suport WS a Uvicorn:
+```
+pip install websockets
+```
+O `uvicorn[standard]`.
+
+## 10) BD: ONLINE/OFFLINE automàtic
+### 10.1 Trigger ONLINE
+El trigger posa ONLINE quan arriba telemetria.
+
+### 10.2 OFFLINE amb pg_cron
+Job `robot_mark_offline` cada 2 minuts:
+```
+SELECT fn_robot_mark_offline(5);
+```
+Config a `JMProjects.cat/backends/backend_europerobotics/bd/schema.sql`.
+
+## 11) Logs utils
 ```
 ros2 topic echo /robot_pairing/state
 ros2 topic echo /audio/heard
 ros2 topic echo /audio/wake
+ros2 topic echo /robocat/cmd
 ```
+
+## 12) Errors comuns
+### 12.1 "ModuleNotFoundError: board"
+Instal·lar `adafruit-blinka` al Python del sistema:
+```
+sudo python3 -m pip install --break-system-packages adafruit-blinka
+```
+
+### 12.2 WS timeout
+- Comprova Nginx proxy
+- Comprova que Uvicorn té websockets
+- Prova: `curl -i https://europerobotics.jmprojects.cat/ws/telemetria`
+
