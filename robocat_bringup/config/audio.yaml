@@ -14,9 +14,9 @@ mic_node:
     enabled: true
     stt_backend: "vosk"
     wake_word: "hola"
-    language: "ca-ES"
+    language: "ca"
     device_index: -1
-    vosk_model_path: "/home/robocat-v2/.vosk/model"
+    vosk_model_path: "/home/robocat-v2/.vosk/ca"
     vosk_model_map_json: >-
       {"ca":"/home/robocat-v2/.vosk/ca","es":"/home/robocat-v2/.vosk/es","en":"/home/robocat-v2/.vosk/en"}
     sample_rate: 16000
