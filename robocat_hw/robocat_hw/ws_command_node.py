@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 import threading
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode, parse_qsl
 
 import rclpy
 from rclpy.node import Node
@@ -92,6 +92,13 @@ class WebsocketCommandNode(Node):
         host = parsed.netloc or parsed.path
         return f"{scheme}://{host}{ws_path}"
 
+    def _append_token(self, ws_url: str, token: str) -> str:
+        parsed = urlparse(ws_url)
+        query = dict(parse_qsl(parsed.query))
+        query["robot_token"] = token
+        new_query = urlencode(query)
+        return parsed._replace(query=new_query).geturl()
+
     def _call_set_language(self, language: str) -> tuple[bool, str]:
         service_name = str(self.get_parameter("audio_service_name").value).strip()
         timeout_sec = float(self.get_parameter("audio_service_timeout_sec").value)
@@ -142,9 +149,9 @@ class WebsocketCommandNode(Node):
             if not token:
                 await asyncio.sleep(reconnect_sec)
                 continue
-            headers = {"x-robot-token": token}
+            ws_url_with_token = self._append_token(ws_url, token)
             try:
-                async with websockets.connect(ws_url, extra_headers=headers) as websocket:
+                async with websockets.connect(ws_url_with_token) as websocket:
                     self.get_logger().info("WS command connected.")
                     while not self._stop.is_set():
                         raw = await websocket.recv()
