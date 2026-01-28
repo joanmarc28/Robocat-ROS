@@ -37,7 +37,7 @@ class MicNode(Node):
         self.declare_parameter("language", "ca-ES")
         self.declare_parameter("device_index", -1)
         self.declare_parameter("vosk_model_path", "/home/robocat-v2/.vosk/model")
-        self.declare_parameter("vosk_model_map", {})
+        self.declare_parameter("vosk_model_map_json", "")
         self.declare_parameter("sample_rate", 16000)
         self.declare_parameter("timeout", 6.0)
         self.declare_parameter("phrase_time_limit", 5.0)
@@ -130,7 +130,13 @@ class MicNode(Node):
         return wake in text
 
     def _resolve_model_path(self, language: str) -> Optional[str]:
-        model_map = self.get_parameter("vosk_model_map").value
+        model_map = None
+        raw = self.get_parameter("vosk_model_map_json").value
+        if isinstance(raw, str) and raw.strip():
+            try:
+                model_map = json.loads(raw)
+            except Exception:
+                model_map = None
         if isinstance(model_map, dict) and language in model_map:
             return str(model_map[language])
         # fallback to ~/.vosk/<lang>

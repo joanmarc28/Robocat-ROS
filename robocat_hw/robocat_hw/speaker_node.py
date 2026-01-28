@@ -1,3 +1,4 @@
+import json
 import os
 import queue
 import random
@@ -20,7 +21,7 @@ class SpeakerNode(Node):
         self.declare_parameter("tts_cmd", "espeak")
         self.declare_parameter("tts_voice", "ca")
         self.declare_parameter("tts_speed", 140)
-        self.declare_parameter("emotion_sounds", {})
+        self.declare_parameter("emotion_sounds_json", "")
 
         self._queue: "queue.Queue[Tuple[str, str]]" = queue.Queue()
         self._thread: Optional[threading.Thread] = None
@@ -96,7 +97,13 @@ class SpeakerNode(Node):
             self.get_logger().warning(f"TTS failed: {exc}")
 
     def _get_emotion_sounds(self, emotion: str) -> List[str]:
-        sounds = self.get_parameter("emotion_sounds").value
+        sounds = None
+        raw = self.get_parameter("emotion_sounds_json").value
+        if isinstance(raw, str) and raw.strip():
+            try:
+                sounds = json.loads(raw)
+            except Exception:
+                sounds = None
         if isinstance(sounds, dict):
             value = sounds.get(emotion, [])
             if isinstance(value, list):
