@@ -103,16 +103,22 @@ sudo systemctl status robocat-cam.service
 ### 6.1 Dependencies
 ```
 sudo apt install -y alsa-utils
-sudo apt install -y python3-vosk python3-sounddevice
+sudo apt install -y python3-venv portaudio19-dev
+python3 -m venv ~/.venvs/robocat-webrtc
+source ~/.venvs/robocat-webrtc/bin/activate
+pip install vosk sounddevice
 ```
 
-### 6.2 Model Vosk (Català)
+### 6.2 Models Vosk (Catala + Espanol + English)
 ```
 mkdir -p ~/.vosk
 cd ~/.vosk
-wget -O vosk-ca.zip https://alphacephei.com/vosk/models/vosk-model-small-ca-0.22.zip
-unzip vosk-ca.zip
-mv vosk-model-small-ca-0.22 model
+wget -O vosk-ca.zip https://alphacephei.com/vosk/models/vosk-model-small-ca-0.4.zip
+wget -O vosk-es.zip https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip
+wget -O vosk-en.zip https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+unzip vosk-ca.zip && mv vosk-model-small-ca-0.4 ca
+unzip vosk-es.zip && mv vosk-model-small-es-0.42 es
+unzip vosk-en.zip && mv vosk-model-small-en-us-0.15 en
 ```
 
 ### 6.3 Activar micro (offline)
@@ -122,17 +128,26 @@ mic_node:
   ros__parameters:
     enabled: true
     stt_backend: "vosk"
-    vosk_model_path: "/home/robocat-v2/.vosk/model"
+    language: "ca"
+    vosk_model_path: "/home/robocat-v2/.vosk/ca"
+    vosk_model_map_json: >-
+      {"ca":"/home/robocat-v2/.vosk/ca","es":"/home/robocat-v2/.vosk/es","en":"/home/robocat-v2/.vosk/en"}
 ```
 
-### 6.4 Provar speaker
+### 6.4 Canviar idioma en calent
+```
+ros2 service call /audio/set_language robocat_msgs/srv/SetLanguage "{language: 'es'}"
+ros2 service call /audio/set_language robocat_msgs/srv/SetLanguage "{language: 'en'}"
+```
+
+### 6.5 Provar speaker
 ```
 ros2 topic pub /audio/play_file std_msgs/String "data: 'cute_1_clean.wav'"
 ros2 topic pub /audio/say std_msgs/String "data: 'Hola, soc el Robocat'"
 ros2 topic pub /audio/emotion std_msgs/String "data: 'happy'"
 ```
 
-### 6.5 Diagnòstic ALSA (si no sona)
+### 6.6 Diagn??stic ALSA (si no sona)
 ```
 aplay -l
 speaker-test -t wav -c 2
@@ -142,7 +157,7 @@ Per I2S (MAX98357) el dispositiu surt a `aplay -l` com:
 ```
 card 2: sndrpihifiberry [snd_rpi_hifiberry_dac], device 0: ...
 ```
-Per això l’ALSA device correcte és:
+Per aix?? l???ALSA device correcte ??s:
 ```
 audio_device: "plughw:2,0"
 ```
