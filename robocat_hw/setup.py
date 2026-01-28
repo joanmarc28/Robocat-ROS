@@ -27,6 +27,8 @@ setup(
             'pi_status_node = robocat_hw.pi_status_node:main',
             'sensors_node = robocat_hw.sensors_node:main',
             'oled_message_node = robocat_hw.oled_message_node:main',
+            'speaker_node = robocat_hw.speaker_node:main',
+            'mic_node = robocat_hw.mic_node:main',
             'system_init_node = robocat_hw.system_init_node:main',
             'web_telemetry_node = robocat_hw.web_telemetry_node:main',
         ],

@@ -10,12 +10,16 @@
   <depend>rclpy</depend>
   <depend>diagnostic_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>robocat_msgs</depend>
   <exec_depend>python3-pil</exec_depend>
   <exec_depend>python3-luma.oled</exec_depend>
   <exec_depend>python3-qrcode</exec_depend>
   <exec_depend>python3-websockets</exec_depend>
   <exec_depend>python3-smbus2</exec_depend>
   <exec_depend>python3-lgpio</exec_depend>
+  <exec_depend>python3-speechrecognition</exec_depend>
+  <exec_depend>python3-sounddevice</exec_depend>
+  <exec_depend>python3-vosk</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
