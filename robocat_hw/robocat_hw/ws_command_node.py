@@ -10,6 +10,7 @@ from urllib.parse import urlparse, urlencode, parse_qsl
 import rclpy
 from rclpy.node import Node
 from robocat_msgs.srv import SetLanguage
+from std_msgs.msg import String
 
 # Allow running with system python while loading venv packages.
 _venv_path = os.environ.get("VIRTUAL_ENV")
@@ -37,10 +38,14 @@ class WebsocketCommandNode(Node):
         self.declare_parameter("reconnect_sec", 2.0)
         self.declare_parameter("audio_service_name", "/audio/set_language")
         self.declare_parameter("audio_service_timeout_sec", 5.0)
+        self.declare_parameter("movement_topic", "/robocat/cmd")
 
         self._stop = asyncio.Event()
         self._token_cache: Optional[str] = None
         self._token_mtime: Optional[float] = None
+        self._movement_pub = self.create_publisher(
+            String, self.get_parameter("movement_topic").value, 10
+        )
 
         if _WS_IMPORT_ERROR is not None:
             self.get_logger().error("websockets not installed. Install with: sudo apt install python3-websockets")
@@ -134,6 +139,32 @@ class WebsocketCommandNode(Node):
                         "response_to": request_id,
                         "success": success,
                         "message": response_message,
+                    }
+                )
+            )
+            return
+        if msg_type == "movement":
+            action = str(message.get("action") or "").strip().lower()
+            if not action:
+                await websocket.send(
+                    json.dumps(
+                        {
+                            "response_to": request_id,
+                            "success": False,
+                            "message": "action is empty",
+                        }
+                    )
+                )
+                return
+            msg = String()
+            msg.data = action
+            self._movement_pub.publish(msg)
+            await websocket.send(
+                json.dumps(
+                    {
+                        "response_to": request_id,
+                        "success": True,
+                        "message": f"movement {action} sent",
                     }
                 )
             )

@@ -7,3 +7,4 @@ ws_command_node:
     reconnect_sec: 2.0
     audio_service_name: "/audio/set_language"
     audio_service_timeout_sec: 5.0
+    movement_topic: "/robocat/cmd"
