@@ -1,14 +1,23 @@
 import json
+import os
 import queue
 import threading
 import time
 from pathlib import Path
+import sys
 from typing import Optional
 
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 from robocat_msgs.srv import SetLanguage
+
+# Allow running with system python while loading venv packages (vosk/sounddevice).
+_venv_path = os.environ.get("VIRTUAL_ENV")
+if _venv_path:
+    _site = Path(_venv_path) / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+    if _site.exists() and str(_site) not in sys.path:
+        sys.path.insert(0, str(_site))
 
 try:
     import speech_recognition as sr
