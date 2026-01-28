@@ -11,7 +11,7 @@ speaker_node:
 
 mic_node:
   ros__parameters:
-    enabled: false
+    enabled: true
     stt_backend: "vosk"
     wake_word: "hola"
     language: "ca-ES"
