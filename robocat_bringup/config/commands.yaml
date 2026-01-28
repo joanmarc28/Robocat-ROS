@@ -1,0 +1,9 @@
+ws_command_node:
+  ros__parameters:
+    enabled: true
+    api_base_url: "https://europerobotics.jmprojects.cat"
+    ws_path: "/ws/telemetria"
+    access_token_path: "/home/robocat-v2/.robocat/access_token.json"
+    reconnect_sec: 2.0
+    audio_service_name: "/audio/set_language"
+    audio_service_timeout_sec: 5.0

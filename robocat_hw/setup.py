@@ -31,6 +31,7 @@ setup(
             'mic_node = robocat_hw.mic_node:main',
             'system_init_node = robocat_hw.system_init_node:main',
             'web_telemetry_node = robocat_hw.web_telemetry_node:main',
+            'ws_command_node = robocat_hw.ws_command_node:main',
         ],
     },
 )

@@ -16,6 +16,9 @@ def generate_launch_description():
     audio_params = PathJoinSubstitution(
         [FindPackageShare("robocat_bringup"), "config", "audio.yaml"]
     )
+    command_params = PathJoinSubstitution(
+        [FindPackageShare("robocat_bringup"), "config", "commands.yaml"]
+    )
     return LaunchDescription([
         Node(
             package="robocat_pairing",
@@ -43,6 +46,12 @@ def generate_launch_description():
             executable="mic_node",
             output="screen",
             parameters=[audio_params],
+        ),
+        Node(
+            package="robocat_hw",
+            executable="ws_command_node",
+            output="screen",
+            parameters=[command_params],
         ),
         Node(
             package="robocat_video",
