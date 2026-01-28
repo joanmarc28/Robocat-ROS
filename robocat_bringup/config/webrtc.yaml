@@ -25,7 +25,7 @@ webrtc_signaling_node:
     ice_poll_sec: 1.0
     camera_device: "/dev/video2"
     camera_pixel_format: "yuyv422"
-    camera_width: 1280
-    camera_height: 720
+    camera_width: 640
+    camera_height: 480
     camera_fps: 15
     debug_signaling: true #treure si no estic femt proves
