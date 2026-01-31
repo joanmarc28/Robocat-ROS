@@ -1,0 +1,14 @@
+mode_manager_node:
+  ros__parameters:
+    default_mode: "cat"
+    default_submode: "default"
+    events_topic: "/vision/events"
+    command_topic: "/robot/command"
+    mode_topic: "/robot/mode"
+    movement_topic: "/robocat/cmd"
+    oled_anim_topic: "/oled_anim"
+    oled_text_topic: "/oled_text"
+    audio_emotion_topic: "/audio/emotion"
+    audio_say_topic: "/audio/say"
+    min_repeat_sec: 1.0
+    event_hold_sec: 2.0

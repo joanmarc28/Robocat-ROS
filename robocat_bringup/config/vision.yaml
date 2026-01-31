@@ -1,0 +1,8 @@
+vision_event_node:
+  ros__parameters:
+    enabled: false
+    manual_event_topic: "/vision/manual_event"
+    events_topic: "/vision/events"
+    detections_topic: "/vision/detections"
+    publish_fake_events: false
+    fake_event_interval_sec: 10.0

@@ -19,6 +19,12 @@ def generate_launch_description():
     command_params = PathJoinSubstitution(
         [FindPackageShare("robocat_bringup"), "config", "commands.yaml"]
     )
+    behavior_params = PathJoinSubstitution(
+        [FindPackageShare("robocat_bringup"), "config", "behavior.yaml"]
+    )
+    vision_params = PathJoinSubstitution(
+        [FindPackageShare("robocat_bringup"), "config", "vision.yaml"]
+    )
     return LaunchDescription([
         Node(
             package="robocat_pairing",
@@ -64,6 +70,18 @@ def generate_launch_description():
             executable="webrtc_signaling_node",
             output="screen",
             parameters=[webrtc_params],
+        ),
+        Node(
+            package="robocat_vision",
+            executable="vision_event_node",
+            output="screen",
+            parameters=[vision_params],
+        ),
+        Node(
+            package="robocat_behavior",
+            executable="mode_manager_node",
+            output="screen",
+            parameters=[behavior_params],
         ),
         Node(package="robocat_control", executable="cmd_node", output="screen"),
     ])
