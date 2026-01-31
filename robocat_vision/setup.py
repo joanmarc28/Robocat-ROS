@@ -20,6 +20,7 @@ setup(
     entry_points={
         "console_scripts": [
             "vision_event_node = robocat_vision.vision_event_node:main",
+            "vision_node = robocat_vision.vision_node:main",
         ],
     },
 )

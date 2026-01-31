@@ -178,6 +178,44 @@ L'ALSA device correcte:
 audio_device: "plughw:2,0"
 ```
 
+## 7) Vision AI (matricules + contenidors)
+### 7.1 Llibreries Python necessaries (exactes)
+Paquets base:
+- ultralytics
+- opencv-python (o `python3-opencv` via apt)
+- numpy
+- scikit-learn
+- Pillow
+
+Per OCR de matricules (CNN):
+- tensorflow
+- keras
+
+Per YOLO (si no ve inclos amb ultralytics al teu entorn):
+- torch
+- torchvision
+
+### 7.2 On son els models
+S'han copiat a:
+```
+robocat_vision/assets/
+  models/
+  yolo/
+  label_encoder/
+```
+Els scripts de `robocat_old/vision/*` ja apunten aqui.
+
+### 7.3 Notes d'instal-lacio (Ubuntu)
+Si uses apt per OpenCV:
+```
+sudo apt install -y python3-opencv
+```
+Si uses pip (recomanat dins venv):
+```
+pip install ultralytics opencv-python numpy scikit-learn Pillow tensorflow keras
+```
+Si falta `torch`/`torchvision`, instala'ls amb la versio compatible per aarch64.
+
 ## 7) I2C + servos (PCA9685)
 ### 7.1 Activar I2C (Ubuntu Server)
 ```

@@ -78,8 +78,20 @@ def generate_launch_description():
             parameters=[vision_params],
         ),
         Node(
+            package="robocat_vision",
+            executable="vision_node",
+            output="screen",
+            parameters=[vision_params],
+        ),
+        Node(
             package="robocat_behavior",
             executable="mode_manager_node",
+            output="screen",
+            parameters=[behavior_params],
+        ),
+        Node(
+            package="robocat_behavior",
+            executable="behavior_node",
             output="screen",
             parameters=[behavior_params],
         ),

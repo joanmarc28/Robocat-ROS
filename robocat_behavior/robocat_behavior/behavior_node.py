@@ -1,0 +1,259 @@
+import json
+import time
+from typing import Any, Dict, List, Optional, Tuple
+
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+
+
+def _to_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"true", "1", "yes", "si", "s", "y", "on"}
+
+
+def _to_float01(value: Any) -> float:
+    try:
+        if isinstance(value, (int, float)):
+            v = float(value)
+        else:
+            s = str(value).strip().lower()
+            if s.endswith("%"):
+                v = float(s[:-1]) / 100.0
+            elif s in {"", "none", "null"}:
+                v = 0.0
+            elif s in {"low", "baixa"}:
+                v = 0.2
+            elif s in {"medium", "mitjana"}:
+                v = 0.5
+            elif s in {"high", "alta"}:
+                v = 0.8
+            else:
+                v = float(s)
+    except Exception:
+        v = 0.0
+    return max(0.0, min(1.0, v))
+
+
+def _parse_head_pose(value: Any) -> Dict[str, float]:
+    if isinstance(value, dict):
+        return {
+            "pitch": float(value.get("pitch", 0.0)),
+            "yaw": float(value.get("yaw", 0.0)),
+            "roll": float(value.get("roll", 0.0)),
+        }
+    if isinstance(value, (list, tuple)) and len(value) >= 2:
+        return {"pitch": float(value[0]), "yaw": float(value[1]), "roll": float(value[2]) if len(value) > 2 else 0.0}
+    if isinstance(value, str):
+        s = value.strip().lower()
+        if s in {"left"}:
+            return {"pitch": 0.0, "yaw": -30.0, "roll": 0.0}
+        if s in {"right"}:
+            return {"pitch": 0.0, "yaw": 30.0, "roll": 0.0}
+        if s in {"up"}:
+            return {"pitch": -20.0, "yaw": 0.0, "roll": 0.0}
+        if s in {"down"}:
+            return {"pitch": 20.0, "yaw": 0.0, "roll": 0.0}
+    return {"pitch": 0.0, "yaw": 0.0, "roll": 0.0}
+
+
+class BehaviorNode(Node):
+    def __init__(self) -> None:
+        super().__init__("behavior_node")
+        self.declare_parameter("mode_topic", "/robot/mode")
+        self.declare_parameter("events_topic", "/vision/events")
+        self.declare_parameter("movement_topic", "/robocat/cmd")
+        self.declare_parameter("oled_anim_topic", "/oled_anim")
+        self.declare_parameter("oled_text_topic", "/oled_text")
+        self.declare_parameter("audio_emotion_topic", "/audio/emotion")
+        self.declare_parameter("min_repeat_sec", 1.0)
+        self.declare_parameter("plate_similarity_threshold", 0.85)
+        self.declare_parameter("plate_max_history", 5)
+
+        self._mode = "cat"
+        self._submode = "default"
+
+        self._pub_move = self.create_publisher(
+            String, self.get_parameter("movement_topic").value, 10
+        )
+        self._pub_oled_anim = self.create_publisher(
+            String, self.get_parameter("oled_anim_topic").value, 10
+        )
+        self._pub_oled_text = self.create_publisher(
+            String, self.get_parameter("oled_text_topic").value, 10
+        )
+        self._pub_audio_emotion = self.create_publisher(
+            String, self.get_parameter("audio_emotion_topic").value, 10
+        )
+
+        self._last_sent: Dict[str, Tuple[float, str]] = {}
+        self._plate_history: List[str] = []
+
+        self.create_subscription(
+            String, self.get_parameter("mode_topic").value, self._on_mode, 10
+        )
+        self.create_subscription(
+            String, self.get_parameter("events_topic").value, self._on_event, 10
+        )
+
+        self.get_logger().info("Behavior node ready.")
+
+    def _send(self, key: str, value: str, publisher) -> None:
+        if not value:
+            return
+        min_repeat = float(self.get_parameter("min_repeat_sec").value)
+        last_time, last_value = self._last_sent.get(key, (0.0, ""))
+        now = time.time()
+        if value == last_value and now - last_time < min_repeat:
+            return
+        msg = String()
+        msg.data = value
+        publisher.publish(msg)
+        self._last_sent[key] = (now, value)
+
+    def _on_mode(self, msg: String) -> None:
+        raw = (msg.data or "").strip().lower()
+        if not raw:
+            return
+        if ":" in raw:
+            mode, submode = raw.split(":", 1)
+        else:
+            mode, submode = raw, "default"
+        self._mode = mode or "cat"
+        self._submode = submode or "default"
+
+    def _plates_are_similar(self, plate1: str, plate2: str) -> bool:
+        if not plate1 or not plate2:
+            return False
+        if len(plate1) != len(plate2):
+            return False
+        matches = sum(c1 == c2 for c1, c2 in zip(plate1, plate2))
+        similarity = matches / len(plate1)
+        threshold = float(self.get_parameter("plate_similarity_threshold").value)
+        return similarity >= threshold
+
+    def _handle_police(self, event_type: str, data: Dict[str, Any]) -> None:
+        if event_type != "plate_detected":
+            return
+        plate = str(data.get("plate") or "").strip().upper()
+        if plate:
+            for prev in self._plate_history:
+                if self._plates_are_similar(plate, prev):
+                    self.get_logger().info(f"Matrícula similar detectada, s'ignora: {plate}")
+                    return
+            self._plate_history.append(plate)
+            if len(self._plate_history) > int(self.get_parameter("plate_max_history").value):
+                self._plate_history.pop(0)
+            self._send("oled_text", f"Matricula: {plate}", self._pub_oled_text)
+        else:
+            self._send("oled_text", "Matricula detectada", self._pub_oled_text)
+        self._send("oled_anim", "patrol", self._pub_oled_anim)
+        self._send("audio_emotion", "siren", self._pub_audio_emotion)
+        self._send("movement", "rotar", self._pub_move)
+
+    def _handle_city(self, event_type: str) -> None:
+        if event_type != "container_detected":
+            return
+        self._send("oled_anim", "surprised", self._pub_oled_anim)
+        self._send("audio_emotion", "happy", self._pub_audio_emotion)
+        self._send("movement", "endavant", self._pub_move)
+
+    def _handle_human(self, emotion: str, context: Dict[str, Any]) -> None:
+        emotion = emotion or "default"
+        attention = _to_bool(context.get("attention"))
+        eye_contact = _to_bool(context.get("eye_contact"))
+        gesture = str(context.get("gesture") or "unknown").lower()
+        aggr_raw = str(context.get("aggression") or context.get("aggression_signals") or "").strip().lower()
+        aggression = aggr_raw not in {"", "none", "no", "false"}
+        head_pose = _parse_head_pose(context.get("head_pose"))
+        pitch = float(head_pose.get("pitch", 0.0))
+        yaw = float(head_pose.get("yaw", 0.0))
+
+        if aggression:
+            self._send("audio_emotion", "scared", self._pub_audio_emotion)
+            self._send("oled_anim", "scared", self._pub_oled_anim)
+            self._send("movement", "enrere", self._pub_move)
+            return
+
+        if emotion == "angry":
+            self._send("audio_emotion", "angry", self._pub_audio_emotion)
+            self._send("oled_anim", "angry", self._pub_oled_anim)
+            self._send("movement", "enrere", self._pub_move)
+            return
+
+        if emotion == "disgusted":
+            self._send("audio_emotion", "disgusted", self._pub_audio_emotion)
+            self._send("oled_anim", "disgusted", self._pub_oled_anim)
+            return
+
+        friendly = {"wave", "thumbs_up", "ok", "open_hand", "peace"}
+        if gesture in friendly or emotion in {"happy", "surprised"}:
+            self._send("audio_emotion", "happy", self._pub_audio_emotion)
+            self._send("oled_anim", "happy", self._pub_oled_anim)
+            self._send("movement", "maneta", self._pub_move)
+            return
+
+        if emotion == "sad":
+            self._send("audio_emotion", "sad", self._pub_audio_emotion)
+            self._send("oled_anim", "sad", self._pub_oled_anim)
+            self._send("movement", "normal", self._pub_move)
+            return
+
+        if attention and eye_contact:
+            if abs(pitch) > 20 or abs(yaw) > 25:
+                self._send("audio_emotion", "surprised", self._pub_audio_emotion)
+                self._send("oled_anim", "surprised", self._pub_oled_anim)
+                self._send("movement", "strech", self._pub_move)
+                return
+            self._send("audio_emotion", "surprised", self._pub_audio_emotion)
+            self._send("oled_anim", "surprised", self._pub_oled_anim)
+            return
+
+        self._send("oled_anim", "default", self._pub_oled_anim)
+
+    def _on_event(self, msg: String) -> None:
+        raw = (msg.data or "").strip()
+        if not raw:
+            return
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+        if not isinstance(event, dict):
+            return
+        event_type = str(event.get("type") or "").strip().lower()
+        data = event.get("data") or {}
+        if not event_type:
+            return
+
+        if self._mode == "police":
+            self._handle_police(event_type, data)
+            return
+        if self._mode == "city":
+            self._handle_city(event_type)
+            return
+
+        # human / cat mode uses human_emotion events
+        if event_type == "human_emotion":
+            emotion = str(data.get("emotion") or "default").strip().lower()
+            self._handle_human(emotion, data)
+            return
+
+
+def main() -> None:
+    rclpy.init()
+    node = BehaviorNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()

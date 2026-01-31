@@ -20,6 +20,7 @@ setup(
     entry_points={
         "console_scripts": [
             "mode_manager_node = robocat_behavior.mode_manager_node:main",
+            "behavior_node = robocat_behavior.behavior_node:main",
         ],
     },
 )

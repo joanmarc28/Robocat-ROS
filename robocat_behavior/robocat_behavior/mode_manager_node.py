@@ -32,6 +32,7 @@ class ModeManagerNode(Node):
         self.declare_parameter("audio_say_topic", "/audio/say")
         self.declare_parameter("min_repeat_sec", 1.0)
         self.declare_parameter("event_hold_sec", 2.0)
+        self.declare_parameter("actions_enabled", True)
 
         self._mode = str(self.get_parameter("default_mode").value).strip().lower()
         self._submode = str(self.get_parameter("default_submode").value).strip().lower()
@@ -162,6 +163,8 @@ class ModeManagerNode(Node):
             return 0
 
     def _on_event(self, msg: String) -> None:
+        if not bool(self.get_parameter("actions_enabled").value):
+            return
         raw = (msg.data or "").strip()
         if not raw:
             return

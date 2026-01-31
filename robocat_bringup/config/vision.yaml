@@ -6,3 +6,17 @@ vision_event_node:
     detections_topic: "/vision/detections"
     publish_fake_events: false
     fake_event_interval_sec: 10.0
+
+vision_node:
+  ros__parameters:
+    enabled: true
+    camera_device: "/dev/video2"
+    camera_width: 640
+    camera_height: 480
+    camera_fps: 15
+    detect_interval_sec: 2.0
+    detect_plate: true
+    detect_container: true
+    ocr_enabled: false
+    events_topic: "/vision/events"
+    detections_topic: "/vision/detections"
