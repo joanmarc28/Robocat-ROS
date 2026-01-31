@@ -28,4 +28,7 @@ webrtc_signaling_node:
     camera_width: 640
     camera_height: 480
     camera_fps: 15
+    overlay_enabled: true
+    overlay_topic: "/vision/detections"
+    overlay_timeout_sec: 0.5
     debug_signaling: true #treure si no estic femt proves

@@ -55,6 +55,8 @@ class VisionEventNode(Node):
         msg = String()
         msg.data = payload
         self._pub_events.publish(msg)
+        if "boxes" in data or "detections" in data:
+            self._pub_detections.publish(msg)
 
     def _publish_fake_event(self) -> None:
         if not bool(self.get_parameter("enabled").value):

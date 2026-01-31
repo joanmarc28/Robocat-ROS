@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import time
 from pathlib import Path
 import sys
 import threading
@@ -15,9 +16,10 @@ if _venv_path:
 
 import rclpy
 from rclpy.node import Node
+from std_msgs.msg import String
 
 try:
-    from aiortc import RTCIceCandidate, RTCPeerConnection, RTCSessionDescription
+    from aiortc import RTCIceCandidate, RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
     from aiortc.contrib.media import MediaPlayer
     _AIORTC_IMPORT_ERROR: Optional[Exception] = None
 except Exception as exc:  # pragma: no cover - optional runtime dependency
@@ -25,6 +27,7 @@ except Exception as exc:  # pragma: no cover - optional runtime dependency
     RTCSessionDescription = None  # type: ignore[assignment]
     RTCIceCandidate = None  # type: ignore[assignment]
     MediaPlayer = None  # type: ignore[assignment]
+    VideoStreamTrack = None  # type: ignore[assignment]
     _AIORTC_IMPORT_ERROR = exc
 
 try:
@@ -34,6 +37,115 @@ except Exception as exc:  # pragma: no cover
     _REQUESTS_IMPORT_ERROR = exc
 else:
     _REQUESTS_IMPORT_ERROR = None
+
+try:
+    import cv2
+    import numpy as np
+    from av import VideoFrame
+    _OVERLAY_IMPORT_ERROR: Optional[Exception] = None
+except Exception as exc:  # pragma: no cover
+    cv2 = None  # type: ignore[assignment]
+    np = None  # type: ignore[assignment]
+    VideoFrame = None  # type: ignore[assignment]
+    _OVERLAY_IMPORT_ERROR = exc
+
+
+class _OverlayState:
+    def __init__(self) -> None:
+        self.last_payload: Optional[Dict[str, Any]] = None
+        self.last_time: float = 0.0
+
+    def update(self, payload: Dict[str, Any]) -> None:
+        self.last_payload = payload
+        self.last_time = time.time()
+
+
+class _OverlayVideoTrack(VideoStreamTrack):
+    def __init__(
+        self,
+        device: str,
+        width: int,
+        height: int,
+        fps: int,
+        overlay: _OverlayState,
+        overlay_timeout: float,
+    ) -> None:
+        super().__init__()
+        self._device = device
+        self._width = width
+        self._height = height
+        self._fps = fps
+        self._overlay = overlay
+        self._overlay_timeout = overlay_timeout
+        self._cap = cv2.VideoCapture(device)
+        if width > 0:
+            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        if height > 0:
+            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        if fps > 0:
+            self._cap.set(cv2.CAP_PROP_FPS, fps)
+
+    def _draw_boxes(self, frame, payload: Dict[str, Any]) -> None:
+        boxes = payload.get("boxes") or payload.get("detections") or []
+        if not isinstance(boxes, list):
+            return
+        h, w = frame.shape[:2]
+        for box in boxes:
+            if not isinstance(box, dict):
+                continue
+            x1 = box.get("x1")
+            y1 = box.get("y1")
+            x2 = box.get("x2")
+            y2 = box.get("y2")
+            if None in (x1, y1, x2, y2):
+                continue
+            try:
+                x1 = float(x1)
+                y1 = float(y1)
+                x2 = float(x2)
+                y2 = float(y2)
+            except Exception:
+                continue
+            # if normalized 0..1, convert to pixels
+            if 0.0 <= x1 <= 1.0 and 0.0 <= x2 <= 1.0 and 0.0 <= y1 <= 1.0 and 0.0 <= y2 <= 1.0:
+                x1, x2 = int(x1 * w), int(x2 * w)
+                y1, y2 = int(y1 * h), int(y2 * h)
+            else:
+                x1, x2 = int(x1), int(x2)
+                y1, y2 = int(y1), int(y2)
+            label = str(box.get("label") or box.get("type") or "")
+            color = box.get("color")
+            if isinstance(color, (list, tuple)) and len(color) == 3:
+                color = tuple(int(c) for c in color)
+            else:
+                color = (0, 255, 0)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            if label:
+                cv2.putText(
+                    frame,
+                    label,
+                    (x1, max(0, y1 - 6)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    color,
+                    1,
+                    cv2.LINE_AA,
+                )
+
+    async def recv(self) -> "VideoFrame":
+        pts, time_base = await self.next_timestamp()
+        ok, frame = self._cap.read()
+        if not ok or frame is None:
+            # return a black frame if capture fails
+            frame = np.zeros((self._height or 480, self._width or 640, 3), dtype=np.uint8)
+        now = time.time()
+        payload = self._overlay.last_payload
+        if payload and (now - self._overlay.last_time) <= self._overlay_timeout:
+            self._draw_boxes(frame, payload)
+        video_frame = VideoFrame.from_ndarray(frame, format="bgr24")
+        video_frame.pts = pts
+        video_frame.time_base = time_base
+        return video_frame
 
 
 class WebRtcSignalingNode(Node):
@@ -59,11 +171,22 @@ class WebRtcSignalingNode(Node):
         self.declare_parameter("camera_width", 1280)
         self.declare_parameter("camera_height", 720)
         self.declare_parameter("camera_fps", 30)
+        self.declare_parameter("overlay_enabled", False)
+        self.declare_parameter("overlay_topic", "/vision/detections")
+        self.declare_parameter("overlay_timeout_sec", 0.5)
 
         self._stop = asyncio.Event()
         self._token_cache: Optional[str] = None
         self._token_mtime: Optional[float] = None
         self._session = requests.Session() if requests else None
+        self._overlay_state = _OverlayState()
+
+        self.create_subscription(
+            String,
+            self.get_parameter("overlay_topic").value,
+            self._on_overlay,
+            10,
+        )
 
         if _AIORTC_IMPORT_ERROR is not None:
             self.get_logger().error(
@@ -145,6 +268,19 @@ class WebRtcSignalingNode(Node):
         if not value:
             return None
         return str(value)
+
+    def _on_overlay(self, msg: "String") -> None:
+        if not bool(self.get_parameter("overlay_enabled").value):
+            return
+        raw = (msg.data or "").strip()
+        if not raw:
+            return
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+        if isinstance(payload, dict):
+            self._overlay_state.update(payload)
 
     async def _http_get_json(
         self, url: str, headers: Dict[str, str]
@@ -357,6 +493,8 @@ class WebRtcSignalingNode(Node):
             width = int(self.get_parameter("camera_width").value)
             height = int(self.get_parameter("camera_height").value)
             fps = int(self.get_parameter("camera_fps").value)
+            overlay_enabled = bool(self.get_parameter("overlay_enabled").value)
+            overlay_timeout = float(self.get_parameter("overlay_timeout_sec").value)
 
             options: Dict[str, str] = {}
             if width > 0 and height > 0:
@@ -366,19 +504,42 @@ class WebRtcSignalingNode(Node):
             if pixel_format:
                 options["pixel_format"] = pixel_format
 
-            try:
-                player = MediaPlayer(device, format=camera_format, options=options)
-            except Exception as exc:
-                self.get_logger().error(f"Failed to open camera {device}: {exc}")
-                await asyncio.sleep(offer_poll_sec)
-                continue
+            if overlay_enabled:
+                if _OVERLAY_IMPORT_ERROR is not None:
+                    self.get_logger().warning(
+                        f"Overlay disabled (missing deps): {_OVERLAY_IMPORT_ERROR}"
+                    )
+                    overlay_enabled = False
 
-            if player.video is None:
-                self.get_logger().error("Camera opened but no video track available.")
-                await asyncio.sleep(offer_poll_sec)
-                continue
+            if overlay_enabled:
+                try:
+                    track = _OverlayVideoTrack(
+                        device=device,
+                        width=width,
+                        height=height,
+                        fps=fps,
+                        overlay=self._overlay_state,
+                        overlay_timeout=overlay_timeout,
+                    )
+                except Exception as exc:
+                    self.get_logger().error(f"Failed to open camera {device}: {exc}")
+                    await asyncio.sleep(offer_poll_sec)
+                    continue
+                pc.addTrack(track)
+            else:
+                try:
+                    player = MediaPlayer(device, format=camera_format, options=options)
+                except Exception as exc:
+                    self.get_logger().error(f"Failed to open camera {device}: {exc}")
+                    await asyncio.sleep(offer_poll_sec)
+                    continue
 
-            pc.addTrack(player.video)
+                if player.video is None:
+                    self.get_logger().error("Camera opened but no video track available.")
+                    await asyncio.sleep(offer_poll_sec)
+                    continue
+
+                pc.addTrack(player.video)
 
             try:
                 await pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type=sdp_type))
