@@ -1,6 +1,6 @@
 import json
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import rclpy
 from rclpy.node import Node
@@ -34,7 +34,12 @@ class VisionNode(Node):
         self.declare_parameter("detect_interval_sec", 2.0)
         self.declare_parameter("detect_plate", True)
         self.declare_parameter("detect_container", True)
+        self.declare_parameter("detect_human_emotion", True)
         self.declare_parameter("ocr_enabled", False)
+        self.declare_parameter("emotion_backend", "cascade")
+        self.declare_parameter("emotion_interval_sec", 0.5)
+        self.declare_parameter("emotion_cooldown_sec", 1.5)
+        self.declare_parameter("emotion_min_confidence", 0.55)
         self.declare_parameter("events_topic", "/vision/events")
         self.declare_parameter("detections_topic", "/vision/detections")
 
@@ -54,6 +59,13 @@ class VisionNode(Node):
         if _VISION_IMPORT_ERROR is not None:
             self.get_logger().error(f"Vision deps missing: {_VISION_IMPORT_ERROR}")
             return
+
+        self._last_emotion: str = ""
+        self._last_emotion_ts: float = 0.0
+        self._next_emotion_ts: float = 0.0
+        self._face_cascade = None
+        self._smile_cascade = None
+        self._setup_emotion_backend()
 
         self._cap = self._open_camera()
         if self._cap is None:
@@ -80,6 +92,27 @@ class VisionNode(Node):
             cap.set(cv2.CAP_PROP_FPS, fps)
         return cap
 
+    def _setup_emotion_backend(self) -> None:
+        if not bool(self.get_parameter("detect_human_emotion").value):
+            return
+        backend = str(self.get_parameter("emotion_backend").value).strip().lower()
+        if backend != "cascade":
+            self.get_logger().warning(
+                f"Emotion backend '{backend}' is not implemented yet. Using 'cascade'."
+            )
+        if cv2 is None:
+            return
+        face_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        smile_path = cv2.data.haarcascades + "haarcascade_smile.xml"
+        self._face_cascade = cv2.CascadeClassifier(face_path)
+        self._smile_cascade = cv2.CascadeClassifier(smile_path)
+        if self._face_cascade.empty():
+            self._face_cascade = None
+            self.get_logger().warning("Face cascade not available; emotion detection disabled.")
+        if self._smile_cascade.empty():
+            self._smile_cascade = None
+            self.get_logger().warning("Smile cascade not available; happy detection degraded.")
+
     def _publish(self, topic: String, payload: Dict[str, Any]) -> None:
         msg = String()
         msg.data = json.dumps(payload, ensure_ascii=False)
@@ -90,6 +123,80 @@ class VisionNode(Node):
         if "boxes" in payload or "detections" in payload:
             self._publish(self._pub_detections, payload)
 
+    def _select_primary_face(
+        self, faces: List[Tuple[int, int, int, int]]
+    ) -> Optional[Tuple[int, int, int, int]]:
+        if not faces:
+            return None
+        return sorted(faces, key=lambda b: b[2] * b[3], reverse=True)[0]
+
+    def _detect_human_emotion(
+        self, frame
+    ) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+        if self._face_cascade is None:
+            return None, []
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = self._face_cascade.detectMultiScale(
+            gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60)
+        )
+        if len(faces) == 0:
+            return None, []
+
+        h, w = frame.shape[:2]
+        selected = self._select_primary_face(list(faces))
+        if selected is None:
+            return None, []
+
+        x, y, fw, fh = selected
+        roi = gray[y : y + fh, x : x + fw]
+
+        smile_found = False
+        if self._smile_cascade is not None and roi.size > 0:
+            smiles = self._smile_cascade.detectMultiScale(
+                roi, scaleFactor=1.7, minNeighbors=20, minSize=(20, 20)
+            )
+            smile_found = len(smiles) > 0
+
+        emotion = "happy" if smile_found else "default"
+        confidence = 0.82 if smile_found else 0.58
+        min_conf = float(self.get_parameter("emotion_min_confidence").value)
+        if confidence < min_conf:
+            return None, []
+
+        now = time.time()
+        cooldown = float(self.get_parameter("emotion_cooldown_sec").value)
+        if emotion == self._last_emotion and (now - self._last_emotion_ts) < cooldown:
+            return None, []
+        self._last_emotion = emotion
+        self._last_emotion_ts = now
+
+        center_x = x + (fw / 2.0)
+        center_y = y + (fh / 2.0)
+        cx_norm = center_x / float(w)
+        cy_norm = center_y / float(h)
+        attention = 0.35 <= cx_norm <= 0.65 and 0.25 <= cy_norm <= 0.75
+        eye_contact = attention
+
+        payload = {
+            "emotion": emotion,
+            "attention": attention,
+            "eye_contact": eye_contact,
+            "gesture": "unknown",
+            "aggression": "none",
+            "head_pose": {"pitch": 0.0, "yaw": 0.0, "roll": 0.0},
+            "face_bbox": {"x1": x, "y1": y, "x2": x + fw, "y2": y + fh},
+        }
+        boxes = [
+            {
+                "x1": x / float(w),
+                "y1": y / float(h),
+                "x2": (x + fw) / float(w),
+                "y2": (y + fh) / float(h),
+                "label": f"face:{emotion}",
+            }
+        ]
+        return payload, boxes
+
     def _tick(self) -> None:
         if not self._cap:
             return
@@ -99,6 +206,24 @@ class VisionNode(Node):
 
         h, w = frame.shape[:2]
         boxes = []
+
+        if bool(self.get_parameter("detect_human_emotion").value):
+            now = time.time()
+            if now < self._next_emotion_ts:
+                emotion_data = None
+                emotion_boxes = []
+            else:
+                emotion_data, emotion_boxes = self._detect_human_emotion(frame)
+                self._next_emotion_ts = now + float(
+                    self.get_parameter("emotion_interval_sec").value
+                )
+            if emotion_data is not None:
+                score = 0.82 if emotion_data.get("emotion") == "happy" else 0.58
+                self._emit_event(
+                    {"type": "human_emotion", "score": score, "data": emotion_data}
+                )
+            if emotion_boxes:
+                boxes.extend(emotion_boxes)
 
         if bool(self.get_parameter("detect_plate").value):
             car, car_bbox = PlateDetection.detect_car(frame)  # type: ignore[call-arg]

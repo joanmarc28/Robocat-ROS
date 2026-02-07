@@ -5,13 +5,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from keras.models import Sequential, load_model
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from tensorflow.keras.layers import Conv2D, Dense, Dropout, Flatten, MaxPooling2D
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.utils import to_categorical
 from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)
@@ -53,6 +48,15 @@ class PlateDetection:
         return results
 
     def ocr_train():
+        try:
+            from keras.models import Sequential
+            from tensorflow.keras.layers import Conv2D, Dense, Dropout, Flatten, MaxPooling2D
+            from tensorflow.keras.optimizers import Adam
+            from tensorflow.keras.preprocessing.image import ImageDataGenerator
+            from tensorflow.keras.utils import to_categorical
+        except Exception as exc:
+            raise RuntimeError(f"OCR training requires keras/tensorflow: {exc}") from exc
+
         dataset_path = str(ASSETS_DIR / "database" / "plate_ocr" / "chars74k")
         images = []
         labels = []
@@ -220,6 +224,11 @@ class PlateDetection:
         model_path=str(ASSETS_DIR / "models" / "cnn.keras"),
         label_encoder_path=str(ASSETS_DIR / "label_encoder" / "label_encoder.pkl"),
     ):
+        try:
+            from keras.models import load_model
+        except Exception as exc:
+            raise RuntimeError(f"OCR inference requires keras/tensorflow: {exc}") from exc
+
         char_imgs = PlateDetection.segment_characters(plate_img)
         text = ""
         model = load_model(model_path, compile=False, safe_mode=False)

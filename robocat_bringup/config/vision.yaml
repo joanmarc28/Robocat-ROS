@@ -17,6 +17,11 @@ vision_node:
     detect_interval_sec: 2.0
     detect_plate: true
     detect_container: true
+    detect_human_emotion: true
+    emotion_backend: "cascade"
+    emotion_interval_sec: 0.5
+    emotion_cooldown_sec: 1.5
+    emotion_min_confidence: 0.55
     ocr_enabled: false
     events_topic: "/vision/events"
     detections_topic: "/vision/detections"

@@ -178,7 +178,7 @@ L'ALSA device correcte:
 audio_device: "plughw:2,0"
 ```
 
-## 7) Vision AI (matricules + contenidors)
+## 7) Vision AI (matricules + contenidors + emocions)
 ### 7.1 Llibreries Python necessaries (exactes)
 Paquets base:
 - ultralytics
@@ -187,13 +187,17 @@ Paquets base:
 - scikit-learn
 - Pillow
 
-Per OCR de matricules (CNN):
+Per OCR de matricules (CNN, opcional):
 - tensorflow
 - keras
 
 Per YOLO (si no ve inclos amb ultralytics al teu entorn):
 - torch
 - torchvision
+
+Per emocions locals:
+- Mode actual recomanat: OpenCV cascade (no necessita keras)
+- Mode model real (opcional): tensorflow/keras o tflite-runtime
 
 ### 7.2 On son els models
 S'han copiat a:
@@ -215,6 +219,27 @@ Si uses pip (recomanat dins venv):
 pip install ultralytics opencv-python numpy scikit-learn Pillow tensorflow keras
 ```
 Si falta `torch`/`torchvision`, instala'ls amb la versio compatible per aarch64.
+
+### 7.4 Deteccio d'emocio humana (local)
+`vision_node` publica `human_emotion` a `/vision/events` i caixes a `/vision/detections`.
+
+Config actual (estable i lleugera):
+```
+vision_node:
+  ros__parameters:
+    detect_human_emotion: true
+    emotion_backend: "cascade"
+    emotion_interval_sec: 0.5
+    emotion_cooldown_sec: 1.5
+    emotion_min_confidence: 0.55
+```
+
+Backend `cascade`:
+- Detecta cara (`haarcascade_frontalface_default.xml`)
+- Detecta somriure (`haarcascade_smile.xml`)
+- Publica `emotion=happy` si hi ha somriure, altrament `emotion=default`
+
+Si vols millor precisio, canvia a model entrenat d'emocions (FER) i afegeix backend model (tensorflow o tflite).
 
 ## 7) I2C + servos (PCA9685)
 ### 7.1 Activar I2C (Ubuntu Server)
