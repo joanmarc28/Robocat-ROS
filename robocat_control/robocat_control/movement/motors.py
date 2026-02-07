@@ -20,37 +20,72 @@ for i in range(16):
     s = servo.Servo(pca.channels[i], min_pulse=500, max_pulse=2500)
     servos.append(s)
 
+SERVO_MIN_ANGLE = 5.0
+SERVO_MAX_ANGLE = 175.0
+
 
 class Pota:
-    def __init__(self, cadera, genoll,right,front):
+    def __init__(
+        self,
+        cadera,
+        genoll,
+        right,
+        front,
+        invert_up=False,
+        invert_down=False,
+        trim_up=0.0,
+        trim_down=0.0,
+    ):
         self.servo_up = cadera
         self.servo_down = genoll
         self.state = "sit"  # Estat inicial de la pota
         self.right = right  
         self.front = front
         self.old_state = "start"
+        self.invert_up = invert_up
+        self.invert_down = invert_down
+        self.trim_up = trim_up
+        self.trim_down = trim_down
 
     def set_new_position(self,t, inter_method='linear'):
         new_pos = position(self.state)
         old_pos = position(self.old_state)
 
+        # Si la pota ja està al mateix estat, evita reenviar seqüències idèntiques
+        # que poden provocar micro-oscil·lacions al servo.
+        if new_pos == old_pos:
+            return
+
         up = 0
         down = 0
         if self.right:
-            up = lambda a : 90 - a
-            down = lambda a : a
+            up = lambda a: 90 - a
+            down = lambda a: a
         else:
-            up = lambda a : 90 + a
-            down = lambda a : 180 - a
+            up = lambda a: 90 + a
+            down = lambda a: 180 - a
+
+        if self.invert_up:
+            old_up = up
+            up = lambda a: 180 - old_up(a)
+        if self.invert_down:
+            old_down = down
+            down = lambda a: 180 - old_down(a)
+
+        if self.trim_up:
+            old_up = up
+            up = lambda a: old_up(a) + self.trim_up
+        if self.trim_down:
+            old_down = down
+            down = lambda a: old_down(a) + self.trim_down
         
         correction_factor = (up, down)
-        steps = int(t/0.1)
+        steps = max(1, int(t/0.1))
 
         pos_steps = position_steps(old_pos, new_pos, steps, inter_method, correction_factor)
 
         up_steps = [pos[0] for pos in pos_steps]
         down_steps = [pos[1] for pos in pos_steps]
-        print(up_steps, down_steps)
         t1 = threading.Thread(target=new_angles, args=(self.servo_up,up_steps,t/steps))
         t1.start()
         
@@ -87,11 +122,23 @@ class EstructuraPotes:
     def __init__(self, ultrasons: Optional[object] = None):
         self.ultrasons = ultrasons
 
+        # Calibracio per pota:
+        # - right/front defineixen la cinemàtica base.
+        # - invert_up/invert_down permeten invertir servo concret si va al revés.
+        # - trim_up/trim_down afegeixen offset d'angle.
+        #
+        # Si la pota dreta de darrere va al revés, aquí es calibra per defecte.
+        rear_right = Pota(
+            servos[2], servos[3], True, False, invert_up=True, invert_down=False
+        )
+        rear_left = Pota(
+            servos[7], servos[6], False, False, invert_up=False, invert_down=False
+        )
         self.legs = [
-            Pota(servos[10], servos[11], True,True),  # Pota 1
-            Pota(servos[12], servos[13], False,True),  # Pota 2
-            Pota(servos[2], servos[3], True, False),  # Pota 3
-            Pota(servos[7], servos[6], False, False)   # Pota 4
+            Pota(servos[10], servos[11], True, True),   # Front right
+            Pota(servos[12], servos[13], False, True),  # Front left
+            rear_right,                                  # Rear right
+            rear_left,                                   # Rear left
         ]
         threads = []
 
@@ -250,23 +297,17 @@ class EstructuraPotes:
     def follow_sequance(self, sequance, cycles=1, t = 1):
         """states = self.init_bot()"""
         states = self.get_states()
-        print(f"Initial states: {states}")
 
         for order in sequance["start"]:
             states = self.follow_order(order, states, t)
-            print(f"After order {order}: {states}")
         
         for _ in range(cycles):
             for order in sequance["cycle"]:
                 #if self.ultrasons and self.ultrasons.mesura_distancia() > config.LLINDAR_ULTRASONIC:
                 states = self.follow_order(order, states, t)
-                print(f"After order {order}: {states}")
             
         for order in sequance["end"]:
             states = self.follow_order(order, states, t)
-            print(f"After order {order}: {states}")
-        
-        print(f"Final states: {states}")
 
 def get_angle(state,right):
     (up, down) = position(state)
@@ -284,12 +325,17 @@ def new_angle(servo,angle_final,angle_inicial, duracio, passos=30):
 
     for i in range(passos + 1):
         angle_actual = angle_inicial + i * pas
-        servo.angle = max(0, min(180, angle_actual))  # Protecció límits
+        servo.angle = max(SERVO_MIN_ANGLE, min(SERVO_MAX_ANGLE, angle_actual))
         time.sleep(delay)
 
 def new_angles(servo,angles, delay):
+    prev_angle = None
     for angle in angles:
-        servo.angle = max(0, min(180, angle))  # Protecció límits
+        clamped = max(SERVO_MIN_ANGLE, min(SERVO_MAX_ANGLE, angle))
+        if prev_angle is not None and abs(clamped - prev_angle) < 0.2:
+            continue
+        servo.angle = clamped
+        prev_angle = clamped
         time.sleep(delay)
 
 # Crear potes (ajusta els canals segons com els tinguis connectats)
