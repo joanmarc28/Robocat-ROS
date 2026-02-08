@@ -20,7 +20,7 @@ vision_node:
     detect_container: true
     detect_human_emotion: true
     emotion_backend: "keras"
-    emotion_keras_model_path: ""
+    emotion_keras_model_path: "/home/robocat-v2/robocat_ws/src/Robocat-ROS/robocat_vision/assets/models/emotion.h5"
     emotion_keras_label_encoder_path: ""
     emotion_interval_sec: 0.5
     emotion_cooldown_sec: 1.5
