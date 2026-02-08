@@ -91,6 +91,7 @@ class OledMessageNode(Node):
         self.declare_parameter("assets_path", "assets/eyes_img")
         self.declare_parameter("anim_delay", 0.05)
         self.declare_parameter("anim_loop", True)
+        self.declare_parameter("anim_state_topic", "/oled_anim_state")
 
         self._left = self._make_display(self.get_parameter("bus_left").value)
         self._right = self._make_display(self.get_parameter("bus_right").value)
@@ -111,6 +112,9 @@ class OledMessageNode(Node):
         self._text_sub = self.create_subscription(String, "oled_text", self._on_text, 10)
         self._qr_sub = self.create_subscription(String, "oled_qr", self._on_qr, 10)
         self._anim_sub = self.create_subscription(String, "oled_anim", self._on_anim, 10)
+        self._anim_state_pub = self.create_publisher(
+            String, self.get_parameter("anim_state_topic").value, 10
+        )
         self.get_logger().info("OLED message node ready.")
 
     def _resolve_assets_root(self) -> Path:
@@ -282,18 +286,27 @@ class OledMessageNode(Node):
         if self._anim_thread and self._anim_thread.is_alive():
             self._anim_stop.set()
             self._anim_thread.join(timeout=1.0)
+            if self._current_anim:
+                self._publish_anim_state(f"stopped:{self._current_anim}")
         self._anim_thread = None
         self._current_anim = ""
+
+    def _publish_anim_state(self, state: str) -> None:
+        msg = String()
+        msg.data = state
+        self._anim_state_pub.publish(msg)
 
     def _run_anim(self, folder: str, loop_override: Optional[bool]) -> None:
         frames_left = self._load_frames(folder, "left")
         frames_right = self._load_frames(folder, "right")
         if not frames_left and not frames_right:
             self.get_logger().warning(f"No frames found for {folder}")
+            self._publish_anim_state(f"done:{folder}")
             return
 
         delay = float(self.get_parameter("anim_delay").value)
         loop = bool(self.get_parameter("anim_loop").value) if loop_override is None else loop_override
+        self._publish_anim_state(f"started:{folder}")
         while not self._anim_stop.is_set():
             max_len = max(len(frames_left), len(frames_right))
             if max_len == 0:
@@ -308,6 +321,8 @@ class OledMessageNode(Node):
                 self._anim_stop.wait(delay)
             if not loop:
                 break
+        if not self._anim_stop.is_set():
+            self._publish_anim_state(f"done:{folder}")
 
     def _load_frames(self, folder: str, side: str) -> List["Image.Image"]:
         if Image is None:

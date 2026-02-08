@@ -67,6 +67,7 @@ class BehaviorNode(Node):
         self.declare_parameter("events_topic", "/vision/events")
         self.declare_parameter("movement_topic", "/robocat/cmd")
         self.declare_parameter("oled_anim_topic", "/oled_anim")
+        self.declare_parameter("oled_anim_state_topic", "/oled_anim_state")
         self.declare_parameter("oled_text_topic", "/oled_text")
         self.declare_parameter("audio_emotion_topic", "/audio/emotion")
         self.declare_parameter("min_repeat_sec", 1.0)
@@ -97,10 +98,14 @@ class BehaviorNode(Node):
 
         self._last_sent: Dict[str, Tuple[float, str]] = {}
         self._plate_history: List[str] = []
-        self._event_anim_until: float = 0.0
+        self._event_anim_active: bool = False
+        self._event_anim_deadline: float = 0.0
 
         self.create_subscription(
             String, self.get_parameter("mode_topic").value, self._on_mode, 10
+        )
+        self.create_subscription(
+            String, self.get_parameter("oled_anim_state_topic").value, self._on_oled_anim_state, 10
         )
         self.create_subscription(
             String, self.get_parameter("events_topic").value, self._on_event, 10
@@ -144,12 +149,27 @@ class BehaviorNode(Node):
     def _set_event_anim(self, anim: str) -> None:
         # one-shot event animation: play full sequence once, then return to idle
         self._send("oled_anim", f"{anim}|once", self._pub_oled_anim)
+        self._event_anim_active = True
         hold = float(self.get_parameter("event_anim_hold_sec").value)
-        self._event_anim_until = time.time() + max(0.0, hold)
+        self._event_anim_deadline = time.time() + max(0.0, hold)
+
+    def _on_oled_anim_state(self, msg: String) -> None:
+        state = (msg.data or "").strip().lower()
+        if not state:
+            return
+        if state.startswith("done:") or state.startswith("stopped:"):
+            self._event_anim_active = False
+            self._event_anim_deadline = 0.0
+            self._send_idle_anim(force=True)
 
     def _send_idle_anim(self, force: bool = False) -> None:
-        if not force and time.time() < self._event_anim_until:
-            return
+        if self._event_anim_active:
+            # Fallback only: in case OLED state messages are missing, eventually recover.
+            if self._event_anim_deadline > 0.0 and time.time() >= self._event_anim_deadline:
+                self._event_anim_active = False
+                self._event_anim_deadline = 0.0
+            elif not force:
+                return
         self._send("oled_anim", self._idle_anim(), self._pub_oled_anim)
 
     def _plates_are_similar(self, plate1: str, plate2: str) -> bool:
