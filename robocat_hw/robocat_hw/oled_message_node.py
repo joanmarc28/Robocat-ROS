@@ -27,6 +27,11 @@ try:
 except ImportError:
     qrcode = None
 
+try:
+    from ament_index_python.packages import get_package_share_directory
+except Exception:
+    get_package_share_directory = None  # type: ignore[assignment]
+
 
 class OledDisplay:
     def __init__(self, bus: int, address: int, width: int, height: int):
@@ -96,6 +101,7 @@ class OledMessageNode(Node):
 
         self._font = self._load_font()
         self._frame_cache: Dict[Path, List["Image.Image"]] = {}
+        self._assets_root = self._resolve_assets_root()
         self._anim_thread: Optional[threading.Thread] = None
         self._anim_stop = threading.Event()
 
@@ -105,6 +111,31 @@ class OledMessageNode(Node):
         self._qr_sub = self.create_subscription(String, "oled_qr", self._on_qr, 10)
         self._anim_sub = self.create_subscription(String, "oled_anim", self._on_anim, 10)
         self.get_logger().info("OLED message node ready.")
+
+    def _resolve_assets_root(self) -> Path:
+        configured = Path(str(self.get_parameter("assets_path").value))
+        candidates: List[Path] = []
+        candidates.append(configured)
+        if not configured.is_absolute():
+            candidates.append(Path.cwd() / configured)
+        if get_package_share_directory is not None:
+            try:
+                share = Path(get_package_share_directory("robocat_hw"))
+                candidates.append(share / "assets" / "eyes_img")
+            except Exception:
+                pass
+        # Fallback for development runs from source workspace.
+        candidates.append(Path(__file__).resolve().parents[2] / "assets" / "eyes_img")
+
+        for path in candidates:
+            if path.exists():
+                self.get_logger().info(f"OLED assets path: {path}")
+                return path
+
+        self.get_logger().warning(
+            f"OLED assets path not found. Tried: {', '.join(str(p) for p in candidates)}"
+        )
+        return configured
 
     def _make_display(self, bus: int) -> Optional[OledDisplay]:
         try:
@@ -258,8 +289,7 @@ class OledMessageNode(Node):
     def _load_frames(self, folder: str, side: str) -> List["Image.Image"]:
         if Image is None:
             raise RuntimeError("Pillow is not installed")
-        base = Path(self.get_parameter("assets_path").value)
-        frame_dir = base / folder / side
+        frame_dir = self._assets_root / folder / side
         if frame_dir in self._frame_cache:
             return self._frame_cache[frame_dir]
         if not frame_dir.exists():
