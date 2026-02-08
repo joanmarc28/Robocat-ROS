@@ -70,6 +70,12 @@ class BehaviorNode(Node):
         self.declare_parameter("oled_text_topic", "/oled_text")
         self.declare_parameter("audio_emotion_topic", "/audio/emotion")
         self.declare_parameter("min_repeat_sec", 1.0)
+        self.declare_parameter("event_anim_hold_sec", 2.5)
+        self.declare_parameter("cat_idle_anim", "default")
+        self.declare_parameter("city_idle_anim", "default")
+        self.declare_parameter("police_idle_anim", "default")
+        self.declare_parameter("city_container_anim", "surprised")
+        self.declare_parameter("police_detect_anim", "patrol")
         self.declare_parameter("plate_similarity_threshold", 0.85)
         self.declare_parameter("plate_max_history", 5)
 
@@ -91,6 +97,7 @@ class BehaviorNode(Node):
 
         self._last_sent: Dict[str, Tuple[float, str]] = {}
         self._plate_history: List[str] = []
+        self._event_anim_until: float = 0.0
 
         self.create_subscription(
             String, self.get_parameter("mode_topic").value, self._on_mode, 10
@@ -98,6 +105,7 @@ class BehaviorNode(Node):
         self.create_subscription(
             String, self.get_parameter("events_topic").value, self._on_event, 10
         )
+        self.create_timer(0.5, self._tick)
 
         self.get_logger().info("Behavior node ready.")
 
@@ -124,6 +132,24 @@ class BehaviorNode(Node):
             mode, submode = raw, "default"
         self._mode = mode or "cat"
         self._submode = submode or "default"
+        self._send_idle_anim(force=True)
+
+    def _idle_anim(self) -> str:
+        if self._mode == "police":
+            return str(self.get_parameter("police_idle_anim").value)
+        if self._mode == "city":
+            return str(self.get_parameter("city_idle_anim").value)
+        return str(self.get_parameter("cat_idle_anim").value)
+
+    def _set_event_anim(self, anim: str) -> None:
+        self._send("oled_anim", anim, self._pub_oled_anim)
+        hold = float(self.get_parameter("event_anim_hold_sec").value)
+        self._event_anim_until = time.time() + max(0.0, hold)
+
+    def _send_idle_anim(self, force: bool = False) -> None:
+        if not force and time.time() < self._event_anim_until:
+            return
+        self._send("oled_anim", self._idle_anim(), self._pub_oled_anim)
 
     def _plates_are_similar(self, plate1: str, plate2: str) -> bool:
         if not plate1 or not plate2:
@@ -150,14 +176,14 @@ class BehaviorNode(Node):
             self._send("oled_text", f"Matricula: {plate}", self._pub_oled_text)
         else:
             self._send("oled_text", "Matricula detectada", self._pub_oled_text)
-        self._send("oled_anim", "patrol", self._pub_oled_anim)
+        self._set_event_anim(str(self.get_parameter("police_detect_anim").value))
         self._send("audio_emotion", "siren", self._pub_audio_emotion)
         self._send("movement", "rotar", self._pub_move)
 
     def _handle_city(self, event_type: str) -> None:
         if event_type != "container_detected":
             return
-        self._send("oled_anim", "surprised", self._pub_oled_anim)
+        self._set_event_anim(str(self.get_parameter("city_container_anim").value))
         self._send("audio_emotion", "happy", self._pub_audio_emotion)
         self._send("movement", "endavant", self._pub_move)
 
@@ -171,48 +197,54 @@ class BehaviorNode(Node):
         head_pose = _parse_head_pose(context.get("head_pose"))
         pitch = float(head_pose.get("pitch", 0.0))
         yaw = float(head_pose.get("yaw", 0.0))
+        cat_mode = self._mode == "cat"
 
         if aggression:
             self._send("audio_emotion", "scared", self._pub_audio_emotion)
-            self._send("oled_anim", "scared", self._pub_oled_anim)
+            if cat_mode:
+                self._set_event_anim("scared")
             self._send("movement", "enrere", self._pub_move)
             return
 
         if emotion == "angry":
             self._send("audio_emotion", "angry", self._pub_audio_emotion)
-            self._send("oled_anim", "angry", self._pub_oled_anim)
+            if cat_mode:
+                self._set_event_anim("angry")
             self._send("movement", "enrere", self._pub_move)
             return
 
         if emotion == "disgusted":
             self._send("audio_emotion", "disgusted", self._pub_audio_emotion)
-            self._send("oled_anim", "disgusted", self._pub_oled_anim)
+            if cat_mode:
+                self._set_event_anim("disgusted")
             return
 
         friendly = {"wave", "thumbs_up", "ok", "open_hand", "peace"}
         if gesture in friendly or emotion in {"happy", "surprised"}:
             self._send("audio_emotion", "happy", self._pub_audio_emotion)
-            self._send("oled_anim", "happy", self._pub_oled_anim)
+            if cat_mode:
+                self._set_event_anim("happy" if emotion == "happy" else "surprised")
             self._send("movement", "maneta", self._pub_move)
             return
 
         if emotion == "sad":
             self._send("audio_emotion", "sad", self._pub_audio_emotion)
-            self._send("oled_anim", "sad", self._pub_oled_anim)
+            if cat_mode:
+                self._set_event_anim("sad")
             self._send("movement", "normal", self._pub_move)
             return
 
         if attention and eye_contact:
             if abs(pitch) > 20 or abs(yaw) > 25:
                 self._send("audio_emotion", "surprised", self._pub_audio_emotion)
-                self._send("oled_anim", "surprised", self._pub_oled_anim)
+                if cat_mode:
+                    self._set_event_anim("surprised")
                 self._send("movement", "strech", self._pub_move)
                 return
             self._send("audio_emotion", "surprised", self._pub_audio_emotion)
-            self._send("oled_anim", "surprised", self._pub_oled_anim)
+            if cat_mode:
+                self._set_event_anim("surprised")
             return
-
-        self._send("oled_anim", "default", self._pub_oled_anim)
 
     def _on_event(self, msg: String) -> None:
         raw = (msg.data or "").strip()
@@ -241,6 +273,9 @@ class BehaviorNode(Node):
             emotion = str(data.get("emotion") or "default").strip().lower()
             self._handle_human(emotion, data)
             return
+
+    def _tick(self) -> None:
+        self._send_idle_anim()
 
 
 def main() -> None:

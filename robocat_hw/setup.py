@@ -1,16 +1,27 @@
+from pathlib import Path
 from setuptools import find_packages, setup
 
 package_name = 'robocat_hw'
+share_dir = Path('share') / package_name
+assets_root = Path('assets')
+
+data_files = [
+    ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
+    ('share/' + package_name, ['package.xml']),
+]
+
+if assets_root.exists():
+    for path in assets_root.rglob('*'):
+        if not path.is_file():
+            continue
+        relative_dir = path.parent.as_posix()
+        data_files.append((str(share_dir / relative_dir), [str(path)]))
 
 setup(
     name=package_name,
     version='0.0.0',
     packages=find_packages(exclude=['test']),
-    data_files=[
-        ('share/ament_index/resource_index/packages',
-            ['resource/' + package_name]),
-        ('share/' + package_name, ['package.xml']),
-    ],
+    data_files=data_files,
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='robocat-v2',
