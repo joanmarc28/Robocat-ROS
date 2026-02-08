@@ -46,6 +46,8 @@ class VisionNode(Node):
         self.declare_parameter("emotion_interval_sec", 0.5)
         self.declare_parameter("emotion_cooldown_sec", 1.5)
         self.declare_parameter("emotion_min_confidence", 0.55)
+        self.declare_parameter("overlay_face_label_prefix", "face")
+        self.declare_parameter("overlay_face_label_default", "face")
         self.declare_parameter("events_topic", "/vision/events")
         self.declare_parameter("detections_topic", "/vision/detections")
 
@@ -256,13 +258,16 @@ class VisionNode(Node):
             "head_pose": {"pitch": 0.0, "yaw": 0.0, "roll": 0.0},
             "face_bbox": {"x1": x, "y1": y, "x2": x + fw, "y2": y + fh},
         }
+        prefix = str(self.get_parameter("overlay_face_label_prefix").value).strip() or "face"
+        default_label = str(self.get_parameter("overlay_face_label_default").value).strip() or prefix
+        face_label = default_label if emotion == "default" else f"{prefix}:{emotion}"
         boxes = [
             {
                 "x1": x / float(w),
                 "y1": y / float(h),
                 "x2": (x + fw) / float(w),
                 "y2": (y + fh) / float(h),
-                "label": f"face:{emotion}",
+                "label": face_label,
             }
         ]
         return payload, boxes

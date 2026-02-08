@@ -43,7 +43,7 @@ def generate_launch_description():
             output="screen",
             parameters=[{
                 "assets_path": oled_assets_path,
-                "anim_delay": 0.09,
+                "anim_delay": 0.06,
                 "anim_loop": True,
             }],
         ),

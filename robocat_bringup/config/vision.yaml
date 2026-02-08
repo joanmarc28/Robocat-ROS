@@ -23,6 +23,8 @@ vision_node:
     emotion_interval_sec: 0.5
     emotion_cooldown_sec: 1.5
     emotion_min_confidence: 0.55
+    overlay_face_label_prefix: "face"
+    overlay_face_label_default: "face"
     ocr_enabled: false
     events_topic: "/vision/events"
     detections_topic: "/vision/detections"
