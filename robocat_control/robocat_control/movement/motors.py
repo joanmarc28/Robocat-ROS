@@ -91,7 +91,7 @@ class EstructuraPotes:
             Pota(servos[10], servos[11], True,True),  # Pota 1
             Pota(servos[12], servos[13], False,True),  # Pota 2
             Pota(servos[2], servos[3], True, False),  # Pota 3
-            Pota(servos[6], servos[8], False, False)   # Pota 4
+            Pota(servos[6], servos[5], False, False)   # Pota 4
         ]
         threads = []
 
