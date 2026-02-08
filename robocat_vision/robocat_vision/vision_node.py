@@ -1,5 +1,7 @@
 import json
 import time
+import pickle
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import rclpy
@@ -27,6 +29,20 @@ except Exception as exc:  # pragma: no cover
     ContainerDetection = None  # type: ignore
     _CONTAINER_IMPORT_ERROR = exc
 
+try:
+    import numpy as np
+    _NP_ERROR: Optional[Exception] = None
+except Exception as exc:  # pragma: no cover
+    np = None  # type: ignore
+    _NP_ERROR = exc
+
+try:
+    from keras.models import load_model as keras_load_model
+    _KERAS_ERROR: Optional[Exception] = None
+except Exception as exc:  # pragma: no cover
+    keras_load_model = None  # type: ignore
+    _KERAS_ERROR = exc
+
 
 class VisionNode(Node):
     def __init__(self) -> None:
@@ -43,6 +59,8 @@ class VisionNode(Node):
         self.declare_parameter("detect_human_emotion", True)
         self.declare_parameter("ocr_enabled", False)
         self.declare_parameter("emotion_backend", "cascade")
+        self.declare_parameter("emotion_keras_model_path", "")
+        self.declare_parameter("emotion_keras_label_encoder_path", "")
         self.declare_parameter("emotion_interval_sec", 0.5)
         self.declare_parameter("emotion_cooldown_sec", 1.5)
         self.declare_parameter("emotion_min_confidence", 0.55)
@@ -89,6 +107,11 @@ class VisionNode(Node):
         self._next_emotion_ts: float = 0.0
         self._face_cascade = None
         self._smile_cascade = None
+        self._emotion_model = None
+        self._emotion_label_encoder = None
+        self._emotion_model_hw: Tuple[int, int] = (48, 48)
+        self._emotion_channels_last: bool = True
+        self._emotion_backend: str = "cascade"
         self._setup_emotion_backend()
         self._update_detection_flags()
 
@@ -127,11 +150,8 @@ class VisionNode(Node):
     def _setup_emotion_backend(self) -> None:
         if not self._base_emotion_enabled:
             return
-        backend = str(self.get_parameter("emotion_backend").value).strip().lower()
-        if backend != "cascade":
-            self.get_logger().warning(
-                f"Emotion backend '{backend}' is not implemented yet. Using 'cascade'."
-            )
+        backend = str(self.get_parameter("emotion_backend").value).strip().lower() or "cascade"
+        self._emotion_backend = backend
         if cv2 is None:
             return
         face_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -144,6 +164,160 @@ class VisionNode(Node):
         if self._smile_cascade.empty():
             self._smile_cascade = None
             self.get_logger().warning("Smile cascade not available; happy detection degraded.")
+
+        if backend != "keras":
+            if backend != "cascade":
+                self.get_logger().warning(
+                    f"Emotion backend '{backend}' is not implemented. Using 'cascade'."
+                )
+                self._emotion_backend = "cascade"
+            return
+
+        if _KERAS_ERROR is not None or keras_load_model is None:
+            self.get_logger().warning(
+                f"Keras backend unavailable ({_KERAS_ERROR}). Using cascade."
+            )
+            self._emotion_backend = "cascade"
+            return
+        if _NP_ERROR is not None or np is None:
+            self.get_logger().warning(
+                f"Numpy unavailable ({_NP_ERROR}). Using cascade."
+            )
+            self._emotion_backend = "cascade"
+            return
+
+        model_path, encoder_path = self._resolve_emotion_assets()
+        if not model_path or not encoder_path:
+            self.get_logger().warning("Emotion model/encoder not found. Using cascade.")
+            self._emotion_backend = "cascade"
+            return
+
+        try:
+            self._emotion_model = keras_load_model(str(model_path), compile=False, safe_mode=False)
+            with open(encoder_path, "rb") as f:
+                self._emotion_label_encoder = pickle.load(f)
+            if not self._has_emotion_labels(self._emotion_label_encoder):
+                self.get_logger().warning(
+                    "Loaded keras labels do not look like emotion classes. Using cascade."
+                )
+                self._emotion_backend = "cascade"
+                self._emotion_model = None
+                self._emotion_label_encoder = None
+                return
+            self._configure_emotion_input()
+            self.get_logger().info(
+                f"Keras emotion backend ready (model={model_path.name}, labels={encoder_path.name})."
+            )
+        except Exception as exc:
+            self.get_logger().warning(f"Failed to load keras emotion backend: {exc}. Using cascade.")
+            self._emotion_backend = "cascade"
+            self._emotion_model = None
+            self._emotion_label_encoder = None
+
+    def _has_emotion_labels(self, encoder: Any) -> bool:
+        classes = getattr(encoder, "classes_", None)
+        if classes is None:
+            return False
+        known = {
+            "angry",
+            "disgust",
+            "disgusted",
+            "fear",
+            "scared",
+            "happy",
+            "sad",
+            "surprise",
+            "surprised",
+            "neutral",
+            "default",
+        }
+        values = {str(v).strip().lower() for v in classes}
+        return len(values.intersection(known)) >= 2
+
+    def _resolve_emotion_assets(self) -> Tuple[Optional[Path], Optional[Path]]:
+        model_cfg = str(self.get_parameter("emotion_keras_model_path").value).strip()
+        encoder_cfg = str(self.get_parameter("emotion_keras_label_encoder_path").value).strip()
+
+        model_candidates: List[Path] = []
+        encoder_candidates: List[Path] = []
+        if model_cfg:
+            model_candidates.append(Path(model_cfg))
+        if encoder_cfg:
+            encoder_candidates.append(Path(encoder_cfg))
+
+        module_assets = Path(__file__).resolve().parents[1] / "assets"
+        repo_assets = Path.cwd() / "robocat_vision" / "assets"
+        for base in [module_assets, repo_assets]:
+            model_candidates.append(base / "models" / "cnn.keras")
+            encoder_candidates.append(base / "label_encoder" / "label_encoder.pkl")
+            encoder_candidates.append(base / "models" / "label_encoder" / "label_encoder.pkl")
+
+        model_path = next((p for p in model_candidates if p.exists()), None)
+        encoder_path = next((p for p in encoder_candidates if p.exists()), None)
+        return model_path, encoder_path
+
+    def _configure_emotion_input(self) -> None:
+        if self._emotion_model is None:
+            return
+        input_shape = getattr(self._emotion_model, "input_shape", None)
+        if isinstance(input_shape, list):
+            input_shape = input_shape[0]
+        # Expected patterns: (None, H, W, C) or (None, C, H, W).
+        if isinstance(input_shape, tuple) and len(input_shape) == 4:
+            if input_shape[-1] in (1, 3):
+                self._emotion_channels_last = True
+                self._emotion_model_hw = (int(input_shape[1] or 48), int(input_shape[2] or 48))
+            elif input_shape[1] in (1, 3):
+                self._emotion_channels_last = False
+                self._emotion_model_hw = (int(input_shape[2] or 48), int(input_shape[3] or 48))
+
+    def _map_emotion_label(self, label: str) -> str:
+        value = (label or "").strip().lower()
+        mapping = {
+            "neutral": "default",
+            "default": "default",
+            "happy": "happy",
+            "surprise": "surprised",
+            "surprised": "surprised",
+            "sad": "sad",
+            "angry": "angry",
+            "fear": "scared",
+            "scared": "scared",
+            "disgust": "disgusted",
+            "disgusted": "disgusted",
+        }
+        return mapping.get(value, "default")
+
+    def _predict_keras_emotion(self, roi_gray) -> Tuple[str, float]:
+        if self._emotion_model is None or self._emotion_label_encoder is None or np is None:
+            return "default", 0.0
+
+        target_h, target_w = self._emotion_model_hw
+        resized = cv2.resize(roi_gray, (target_w, target_h), interpolation=cv2.INTER_AREA)
+        arr = resized.astype("float32") / 255.0
+
+        if self._emotion_channels_last:
+            batch = arr.reshape(1, target_h, target_w, 1)
+        else:
+            batch = arr.reshape(1, 1, target_h, target_w)
+
+        pred = self._emotion_model.predict(batch, verbose=0)
+        if isinstance(pred, list):
+            pred = pred[0]
+        pred_vec = pred[0] if hasattr(pred, "__len__") and len(pred) else pred
+        if hasattr(pred_vec, "tolist"):
+            pred_vec = pred_vec.tolist()
+        idx = int(np.argmax(pred_vec))
+        conf = float(pred_vec[idx])
+
+        label = "default"
+        try:
+            label = str(self._emotion_label_encoder.inverse_transform([idx])[0])
+        except Exception:
+            classes = getattr(self._emotion_label_encoder, "classes_", None)
+            if classes is not None and len(classes) > idx:
+                label = str(classes[idx])
+        return self._map_emotion_label(label), conf
 
     def _on_mode(self, msg: String) -> None:
         raw = (msg.data or "").strip().lower()
@@ -222,15 +396,17 @@ class VisionNode(Node):
         x, y, fw, fh = selected
         roi = gray[y : y + fh, x : x + fw]
 
-        smile_found = False
-        if self._smile_cascade is not None and roi.size > 0:
-            smiles = self._smile_cascade.detectMultiScale(
-                roi, scaleFactor=1.7, minNeighbors=20, minSize=(20, 20)
-            )
-            smile_found = len(smiles) > 0
-
-        emotion = "happy" if smile_found else "default"
-        confidence = 0.82 if smile_found else 0.58
+        if self._emotion_backend == "keras":
+            emotion, confidence = self._predict_keras_emotion(roi)
+        else:
+            smile_found = False
+            if self._smile_cascade is not None and roi.size > 0:
+                smiles = self._smile_cascade.detectMultiScale(
+                    roi, scaleFactor=1.7, minNeighbors=20, minSize=(20, 20)
+                )
+                smile_found = len(smiles) > 0
+            emotion = "happy" if smile_found else "default"
+            confidence = 0.82 if smile_found else 0.58
         min_conf = float(self.get_parameter("emotion_min_confidence").value)
         if confidence < min_conf:
             return None, []
@@ -251,6 +427,7 @@ class VisionNode(Node):
 
         payload = {
             "emotion": emotion,
+            "confidence": confidence,
             "attention": attention,
             "eye_contact": eye_contact,
             "gesture": "unknown",
@@ -293,7 +470,7 @@ class VisionNode(Node):
                     self.get_parameter("emotion_interval_sec").value
                 )
             if emotion_data is not None:
-                score = 0.82 if emotion_data.get("emotion") == "happy" else 0.58
+                score = float(emotion_data.get("confidence") or 0.0)
                 self._emit_event(
                     {"type": "human_emotion", "score": score, "data": emotion_data}
                 )

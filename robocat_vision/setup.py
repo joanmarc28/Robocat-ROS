@@ -1,3 +1,5 @@
+from glob import glob
+import os
 from setuptools import setup
 
 package_name = "robocat_vision"
@@ -9,6 +11,10 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
+        (
+            f"share/{package_name}/assets",
+            [f for f in glob("assets/**/*", recursive=True) if os.path.isfile(f)],
+        ),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

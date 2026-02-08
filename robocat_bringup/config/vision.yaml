@@ -19,7 +19,9 @@ vision_node:
     detect_plate: true
     detect_container: true
     detect_human_emotion: true
-    emotion_backend: "cascade"
+    emotion_backend: "keras"
+    emotion_keras_model_path: ""
+    emotion_keras_label_encoder_path: ""
     emotion_interval_sec: 0.5
     emotion_cooldown_sec: 1.5
     emotion_min_confidence: 0.55
