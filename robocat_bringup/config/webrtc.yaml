@@ -30,5 +30,5 @@ webrtc_signaling_node:
     camera_fps: 15
     overlay_enabled: true
     overlay_topic: "/vision/detections"
-    overlay_timeout_sec: 0.5
+    overlay_timeout_sec: 3.0
     debug_signaling: true #treure si no estic femt proves
