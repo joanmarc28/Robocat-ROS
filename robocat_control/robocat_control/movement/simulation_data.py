@@ -111,7 +111,7 @@ backwards_states = {
 
 def forwards(old_state):
     if isinstance(old_state, list):
-        return [forwards(old_substate) for old_substate in old_state]
+        return [backwards(old_substate) for old_substate in old_state]
 
     assert forwards_states.get(old_state) is not None,\
         f"State {old_state} has no position forwards state assigned"
@@ -120,7 +120,7 @@ def forwards(old_state):
 
 def backwards(old_state):
     if isinstance(old_state, list):
-        return [backwards(old_substate) for old_substate in old_state]
+        return [forwards(old_substate) for old_substate in old_state]
 
     assert backwards_states.get(old_state) is not None,\
         f"State {old_state} has no position backwards state assigned"
