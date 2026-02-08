@@ -235,16 +235,14 @@ class BehaviorNode(Node):
             self._send("movement", "normal", self._pub_move)
             return
 
-        if attention and eye_contact:
-            if abs(pitch) > 20 or abs(yaw) > 25:
-                self._send("audio_emotion", "surprised", self._pub_audio_emotion)
-                if cat_mode:
-                    self._set_event_anim("surprised")
-                self._send("movement", "strech", self._pub_move)
-                return
+        # Avoid turning neutral/default detections into constant "surprised".
+        # With the current lightweight backend, many frames are "default".
+        if emotion == "surprised":
             self._send("audio_emotion", "surprised", self._pub_audio_emotion)
             if cat_mode:
                 self._set_event_anim("surprised")
+            if attention and eye_contact and (abs(pitch) > 20 or abs(yaw) > 25):
+                self._send("movement", "strech", self._pub_move)
             return
 
     def _on_event(self, msg: String) -> None:
