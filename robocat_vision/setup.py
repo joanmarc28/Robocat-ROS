@@ -1,8 +1,21 @@
-from glob import glob
 import os
 from setuptools import setup
 
 package_name = "robocat_vision"
+
+
+def _asset_data_files():
+    data_files = []
+    for root, _, files in os.walk("assets"):
+        if not files:
+            continue
+        rel_root = os.path.relpath(root, "assets")
+        install_dir = f"share/{package_name}/assets"
+        if rel_root != ".":
+            install_dir = f"{install_dir}/{rel_root.replace(os.sep, '/')}"
+        file_paths = [os.path.join(root, f) for f in files]
+        data_files.append((install_dir, file_paths))
+    return data_files
 
 setup(
     name=package_name,
@@ -11,11 +24,7 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
-        (
-            f"share/{package_name}/assets",
-            [f for f in glob("assets/**/*", recursive=True) if os.path.isfile(f)],
-        ),
-    ],
+    ] + _asset_data_files(),
     install_requires=["setuptools"],
     zip_safe=True,
     maintainer="robocat",
