@@ -5,8 +5,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)
@@ -49,13 +47,17 @@ class PlateDetection:
 
     def ocr_train():
         try:
+            from sklearn.model_selection import train_test_split
+            from sklearn.preprocessing import LabelEncoder
             from keras.models import Sequential
             from tensorflow.keras.layers import Conv2D, Dense, Dropout, Flatten, MaxPooling2D
             from tensorflow.keras.optimizers import Adam
             from tensorflow.keras.preprocessing.image import ImageDataGenerator
             from tensorflow.keras.utils import to_categorical
         except Exception as exc:
-            raise RuntimeError(f"OCR training requires keras/tensorflow: {exc}") from exc
+            raise RuntimeError(
+                f"OCR training requires keras/tensorflow/scikit-learn: {exc}"
+            ) from exc
 
         dataset_path = str(ASSETS_DIR / "database" / "plate_ocr" / "chars74k")
         images = []
@@ -232,8 +234,13 @@ class PlateDetection:
         char_imgs = PlateDetection.segment_characters(plate_img)
         text = ""
         model = load_model(model_path, compile=False, safe_mode=False)
-        with open(label_encoder_path, "rb") as f:
-            label_encoder = pickle.load(f)
+        try:
+            with open(label_encoder_path, "rb") as f:
+                label_encoder = pickle.load(f)
+        except Exception as exc:
+            raise RuntimeError(
+                f"OCR inference requires scikit-learn label encoder: {exc}"
+            ) from exc
         for char_img in char_imgs:
             processed = PlateDetection.preprocess(char_img)
             prediction = model.predict(processed)
