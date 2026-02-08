@@ -15,12 +15,17 @@ except Exception as exc:  # pragma: no cover
 
 try:
     from robocat_vision.plate_detection import PlateDetection
-    from robocat_vision.container_detection import ContainerDetection
-    _VISION_IMPORT_ERROR: Optional[Exception] = None
+    _PLATE_IMPORT_ERROR: Optional[Exception] = None
 except Exception as exc:  # pragma: no cover
     PlateDetection = None  # type: ignore
+    _PLATE_IMPORT_ERROR = exc
+
+try:
+    from robocat_vision.container_detection import ContainerDetection
+    _CONTAINER_IMPORT_ERROR: Optional[Exception] = None
+except Exception as exc:  # pragma: no cover
     ContainerDetection = None  # type: ignore
-    _VISION_IMPORT_ERROR = exc
+    _CONTAINER_IMPORT_ERROR = exc
 
 
 class VisionNode(Node):
@@ -56,9 +61,18 @@ class VisionNode(Node):
         if _CV2_ERROR is not None:
             self.get_logger().error(f"OpenCV not installed: {_CV2_ERROR}")
             return
-        if _VISION_IMPORT_ERROR is not None:
-            self.get_logger().error(f"Vision deps missing: {_VISION_IMPORT_ERROR}")
-            return
+        self._plate_enabled = bool(self.get_parameter("detect_plate").value)
+        self._container_enabled = bool(self.get_parameter("detect_container").value)
+        if self._plate_enabled and _PLATE_IMPORT_ERROR is not None:
+            self.get_logger().warning(
+                f"Plate detection disabled (missing deps): {_PLATE_IMPORT_ERROR}"
+            )
+            self._plate_enabled = False
+        if self._container_enabled and _CONTAINER_IMPORT_ERROR is not None:
+            self.get_logger().warning(
+                f"Container detection disabled (missing deps): {_CONTAINER_IMPORT_ERROR}"
+            )
+            self._container_enabled = False
 
         self._last_emotion: str = ""
         self._last_emotion_ts: float = 0.0
@@ -114,8 +128,17 @@ class VisionNode(Node):
             self.get_logger().warning("Smile cascade not available; happy detection degraded.")
 
     def _publish(self, topic: String, payload: Dict[str, Any]) -> None:
+        def _json_default(value: Any) -> Any:
+            # Convert numpy scalar types (bool_, int32, float32, etc.) to native Python.
+            if hasattr(value, "item"):
+                try:
+                    return value.item()
+                except Exception:
+                    pass
+            raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
         msg = String()
-        msg.data = json.dumps(payload, ensure_ascii=False)
+        msg.data = json.dumps(payload, ensure_ascii=False, default=_json_default)
         topic.publish(msg)
 
     def _emit_event(self, payload: Dict[str, Any]) -> None:
@@ -174,8 +197,8 @@ class VisionNode(Node):
         center_y = y + (fh / 2.0)
         cx_norm = center_x / float(w)
         cy_norm = center_y / float(h)
-        attention = 0.35 <= cx_norm <= 0.65 and 0.25 <= cy_norm <= 0.75
-        eye_contact = attention
+        attention = bool(0.35 <= cx_norm <= 0.65 and 0.25 <= cy_norm <= 0.75)
+        eye_contact = bool(attention)
 
         payload = {
             "emotion": emotion,
@@ -225,7 +248,7 @@ class VisionNode(Node):
             if emotion_boxes:
                 boxes.extend(emotion_boxes)
 
-        if bool(self.get_parameter("detect_plate").value):
+        if self._plate_enabled:
             car, car_bbox = PlateDetection.detect_car(frame)  # type: ignore[call-arg]
             if car is not None and car_bbox:
                 plate, plate_bbox = PlateDetection.detect_plate(car, car_bbox)  # type: ignore[call-arg]
@@ -248,7 +271,7 @@ class VisionNode(Node):
                             pass
                     self._emit_event(event)
 
-        if bool(self.get_parameter("detect_container").value):
+        if self._container_enabled:
             container, container_bbox = ContainerDetection.detect_container(frame)  # type: ignore[call-arg]
             if container is not None and container_bbox:
                 x1, y1, x2, y2 = container_bbox
