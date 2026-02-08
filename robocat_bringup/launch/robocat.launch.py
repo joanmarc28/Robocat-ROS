@@ -19,6 +19,9 @@ def generate_launch_description():
     command_params = PathJoinSubstitution(
         [FindPackageShare("robocat_bringup"), "config", "commands.yaml"]
     )
+    oled_assets_path = PathJoinSubstitution(
+        [FindPackageShare("robocat_hw"), "assets", "eyes_img"]
+    )
     behavior_params = PathJoinSubstitution(
         [FindPackageShare("robocat_bringup"), "config", "behavior.yaml"]
     )
@@ -34,7 +37,12 @@ def generate_launch_description():
         ),
         Node(package="robocat_hw", executable="pi_status_node", output="screen"),
         Node(package="robocat_hw", executable="sensors_node", output="screen"),
-        Node(package="robocat_hw", executable="oled_message_node", output="screen"),
+        Node(
+            package="robocat_hw",
+            executable="oled_message_node",
+            output="screen",
+            parameters=[{"assets_path": oled_assets_path}],
+        ),
         Node(
             package="robocat_hw",
             executable="web_telemetry_node",

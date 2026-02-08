@@ -7,7 +7,7 @@ speaker_node:
     tts_voice: "ca"
     tts_speed: 140
     emotion_sounds_json: >-
-      {"happy":["cute_1_clean.wav","cute_2_clean.wav"],"sad":["sad_1_clean.wav"],"angry":["angry_1_clean.wav","angry_2_clean.wav"],"neutral":["neutral_1_clean.wav","neutral_2_clean.wav"],"sick":["sick_1_clean.wav"],"funny":["funny_1_clean.wav"],"drink":["drink_1_clean.wav"],"purr":["purr_1_clean.wav"],"hiss":["hiss_1_clean.wav"],"siren":["siren_1_clean.wav"]}
+      {"happy":["cute_1_clean.wav","cute_2_clean.wav"],"sad":["sad_1_clean.wav"],"angry":["angry_1_clean.wav","angry_2_clean.wav"],"neutral":["neutral_1_clean.wav","neutral_2_clean.wav"],"default":["neutral_1_clean.wav","neutral_2_clean.wav"],"surprised":["cute_1_clean.wav"],"disgusted":["hiss_1_clean.wav"],"scared":["hiss_1_clean.wav"],"sick":["sick_1_clean.wav"],"funny":["funny_1_clean.wav"],"drink":["drink_1_clean.wav"],"purr":["purr_1_clean.wav"],"hiss":["hiss_1_clean.wav"],"siren":["siren_1_clean.wav"]}
 
 mic_node:
   ros__parameters:
