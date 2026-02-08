@@ -187,6 +187,14 @@ class ModeManagerNode(Node):
         # normalize emotion events
         if event_type == "human_emotion":
             emotion = str(data.get("emotion") or "default").strip().lower()
+            emotion_map = {
+                "neutral": "default",
+                "surprise": "surprised",
+                "fear": "scared",
+                "fearful": "scared",
+                "disgust": "disgusted",
+            }
+            emotion = emotion_map.get(emotion, emotion)
             event_type = f"human_emotion_{emotion}"
 
         priority = self._event_priority(event_type)
@@ -221,6 +229,8 @@ class ModeManagerNode(Node):
                 )
             if event_type.startswith("human_emotion_angry"):
                 return Action(movement="walk_back", oled_anim="angry", audio_emotion="angry")
+            if event_type.startswith("human_emotion_scared"):
+                return Action(movement="walk_back", oled_anim="scared", audio_emotion="scared")
             return Action(movement="patrol", oled_anim="patrol")
 
         if mode == "city":
@@ -235,6 +245,10 @@ class ModeManagerNode(Node):
             return Action(movement="normal", oled_anim="sad", audio_emotion="sad")
         if event_type.startswith("human_emotion_angry"):
             return Action(movement="walk_back", oled_anim="angry", audio_emotion="angry")
+        if event_type.startswith("human_emotion_scared"):
+            return Action(movement="walk_back", oled_anim="scared", audio_emotion="scared")
+        if event_type.startswith("human_emotion_disgusted"):
+            return Action(movement="normal", oled_anim="disgusted", audio_emotion="disgusted")
         if event_type.startswith("human_emotion_surprised"):
             return Action(movement="strech", oled_anim="surprised", audio_emotion="surprised")
         return Action(oled_anim="default")

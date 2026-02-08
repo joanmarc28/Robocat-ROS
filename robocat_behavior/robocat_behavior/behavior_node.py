@@ -189,7 +189,15 @@ class BehaviorNode(Node):
         self._send("movement", "endavant", self._pub_move)
 
     def _handle_emotion(self, emotion: str, context: Dict[str, Any]) -> None:
-        emotion = emotion or "default"
+        raw_emotion = (emotion or "default").strip().lower()
+        normalize = {
+            "neutral": "default",
+            "surprise": "surprised",
+            "fear": "scared",
+            "fearful": "scared",
+            "disgust": "disgusted",
+        }
+        emotion = normalize.get(raw_emotion, raw_emotion)
         attention = _to_bool(context.get("attention"))
         eye_contact = _to_bool(context.get("eye_contact"))
         gesture = str(context.get("gesture") or "unknown").lower()
@@ -220,11 +228,26 @@ class BehaviorNode(Node):
                 self._set_event_anim("disgusted")
             return
 
+        if emotion == "scared":
+            self._send("audio_emotion", "scared", self._pub_audio_emotion)
+            if cat_mode:
+                self._set_event_anim("scared")
+            self._send("movement", "enrere", self._pub_move)
+            return
+
+        if emotion == "surprised":
+            self._send("audio_emotion", "surprised", self._pub_audio_emotion)
+            if cat_mode:
+                self._set_event_anim("surprised")
+            if attention and eye_contact and (abs(pitch) > 20 or abs(yaw) > 25):
+                self._send("movement", "strech", self._pub_move)
+            return
+
         friendly = {"wave", "thumbs_up", "ok", "open_hand", "peace"}
-        if gesture in friendly or emotion in {"happy", "surprised"}:
+        if gesture in friendly or emotion == "happy":
             self._send("audio_emotion", "happy", self._pub_audio_emotion)
             if cat_mode:
-                self._set_event_anim("happy" if emotion == "happy" else "surprised")
+                self._set_event_anim("happy")
             self._send("movement", "maneta", self._pub_move)
             return
 
@@ -235,14 +258,8 @@ class BehaviorNode(Node):
             self._send("movement", "normal", self._pub_move)
             return
 
-        # Avoid turning neutral/default detections into constant "surprised".
-        # With the current lightweight backend, many frames are "default".
-        if emotion == "surprised":
-            self._send("audio_emotion", "surprised", self._pub_audio_emotion)
-            if cat_mode:
-                self._set_event_anim("surprised")
-            if attention and eye_contact and (abs(pitch) > 20 or abs(yaw) > 25):
-                self._send("movement", "strech", self._pub_move)
+        # Neutral/default should keep idle behavior without forcing reactions.
+        if emotion == "default":
             return
 
     def _on_event(self, msg: String) -> None:
