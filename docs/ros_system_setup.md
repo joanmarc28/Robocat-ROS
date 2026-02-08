@@ -15,6 +15,33 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
+## 1.1 Dependències Python actuals (venv robocat-webrtc)
+Activar sempre el mateix entorn per evitar barrejar paquets de sistema i venv:
+```
+source /home/robocat-v2/.venvs/robocat-webrtc/bin/activate
+```
+
+Paquets base ROS build/tooling dins venv:
+```
+pip install --upgrade pip
+pip install colcon-common-extensions catkin_pkg empy lark PyYAML
+```
+
+Paquets runtime que s'estan usant al robot (audio, vision, webrtc, hw):
+```
+pip install \
+  requests aiortc av \
+  vosk sounddevice \
+  ultralytics torch==2.4.1 torchvision==0.19.1 \
+  opencv-python numpy scikit-learn Pillow tensorflow keras \
+  smbus2 lgpio luma.oled luma.core RPi.GPIO
+```
+
+Comprovacio rapida:
+```
+python -c "import ultralytics, torch, cv2, sklearn, vosk, sounddevice; print('deps ok')"
+```
+
 ## 2) Llançar el sistema complet
 ```
 ros2 launch robocat_bringup robocat.launch.py
@@ -122,7 +149,7 @@ sudo systemctl status robocat-cam.service
 sudo apt install -y alsa-utils python3-venv portaudio19-dev
 python3 -m venv ~/.venvs/robocat-webrtc
 source ~/.venvs/robocat-webrtc/bin/activate
-pip install vosk sounddevice
+pip install vosk sounddevice requests aiortc av
 ```
 
 ### 6.2 Models Vosk (Catala + Espanol + English)
@@ -195,6 +222,11 @@ Per YOLO (si no ve inclos amb ultralytics al teu entorn):
 - torch
 - torchvision
 
+Versions que s'han validat al robot:
+- torch==2.4.1
+- torchvision==0.19.1
+- ultralytics==8.3.40
+
 Per emocions locals:
 - Mode actual recomanat: OpenCV cascade (no necessita keras)
 - Mode model real (opcional): tensorflow/keras o tflite-runtime
@@ -216,7 +248,8 @@ sudo apt install -y python3-opencv
 ```
 Si uses pip (recomanat dins venv):
 ```
-pip install ultralytics opencv-python numpy scikit-learn Pillow tensorflow keras
+pip install ultralytics==8.3.40 torch==2.4.1 torchvision==0.19.1 \
+  opencv-python numpy scikit-learn Pillow tensorflow keras
 ```
 Si falta `torch`/`torchvision`, instala'ls amb la versio compatible per aarch64.
 
@@ -348,4 +381,24 @@ sudo python3 -m pip install --break-system-packages adafruit-blinka
 - Comprova Nginx proxy
 - Comprova que Uvicorn té websockets
 - Prova: `curl -i https://europerobotics.jmprojects.cat/ws/telemetria`
+
+### 12.3 Problemes d'entorn Python barrejat
+Símptomes típics:
+- `No module named ...` tot i haver fet `pip install`
+- shebang dels nodes apunta a `/usr/bin/python3`
+
+Comprovacions:
+```
+source /home/robocat-v2/.venvs/robocat-webrtc/bin/activate
+which python
+which colcon
+head -n 1 install/robocat_vision/lib/robocat_vision/vision_node
+```
+
+Rebuild net amb venv:
+```
+rm -rf build/ install/ log/
+colcon build --symlink-install
+source install/setup.bash
+```
 
