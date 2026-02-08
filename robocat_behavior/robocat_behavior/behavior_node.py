@@ -142,7 +142,8 @@ class BehaviorNode(Node):
         return str(self.get_parameter("cat_idle_anim").value)
 
     def _set_event_anim(self, anim: str) -> None:
-        self._send("oled_anim", anim, self._pub_oled_anim)
+        # one-shot event animation: play full sequence once, then return to idle
+        self._send("oled_anim", f"{anim}|once", self._pub_oled_anim)
         hold = float(self.get_parameter("event_anim_hold_sec").value)
         self._event_anim_until = time.time() + max(0.0, hold)
 

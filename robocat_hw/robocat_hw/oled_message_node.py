@@ -104,6 +104,7 @@ class OledMessageNode(Node):
         self._assets_root = self._resolve_assets_root()
         self._anim_thread: Optional[threading.Thread] = None
         self._anim_stop = threading.Event()
+        self._current_anim: str = ""
 
         self._show_text(self.get_parameter("message").value)
 
@@ -244,25 +245,47 @@ class OledMessageNode(Node):
                 display.show_qr(qr_image, label_lines, self._font, self.get_parameter("line_height").value)
 
     def _on_anim(self, msg: String) -> None:
-        folder = msg.data.strip()
+        raw = msg.data.strip()
+        folder, loop_override = self._parse_anim_request(raw)
         if not folder:
+            return
+        # Avoid restarting the same animation on every repeated event.
+        if (
+            raw == self._current_anim
+            and self._anim_thread is not None
+            and self._anim_thread.is_alive()
+        ):
             return
         self._stop_anim()
         self._anim_stop.clear()
+        self._current_anim = raw
         self._anim_thread = threading.Thread(
             target=self._run_anim,
-            args=(folder,),
+            args=(folder, loop_override),
             daemon=True,
         )
         self._anim_thread.start()
+
+    def _parse_anim_request(self, raw: str) -> tuple[str, Optional[bool]]:
+        if "|" not in raw:
+            return raw, None
+        folder, mode = raw.split("|", 1)
+        folder = folder.strip()
+        mode = mode.strip().lower()
+        if mode in {"once", "one", "single"}:
+            return folder, False
+        if mode in {"loop", "repeat"}:
+            return folder, True
+        return folder, None
 
     def _stop_anim(self) -> None:
         if self._anim_thread and self._anim_thread.is_alive():
             self._anim_stop.set()
             self._anim_thread.join(timeout=1.0)
         self._anim_thread = None
+        self._current_anim = ""
 
-    def _run_anim(self, folder: str) -> None:
+    def _run_anim(self, folder: str, loop_override: Optional[bool]) -> None:
         frames_left = self._load_frames(folder, "left")
         frames_right = self._load_frames(folder, "right")
         if not frames_left and not frames_right:
@@ -270,7 +293,7 @@ class OledMessageNode(Node):
             return
 
         delay = float(self.get_parameter("anim_delay").value)
-        loop = bool(self.get_parameter("anim_loop").value)
+        loop = bool(self.get_parameter("anim_loop").value) if loop_override is None else loop_override
         while not self._anim_stop.is_set():
             max_len = max(len(frames_left), len(frames_right))
             if max_len == 0:

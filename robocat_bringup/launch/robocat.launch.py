@@ -41,7 +41,11 @@ def generate_launch_description():
             package="robocat_hw",
             executable="oled_message_node",
             output="screen",
-            parameters=[{"assets_path": oled_assets_path}],
+            parameters=[{
+                "assets_path": oled_assets_path,
+                "anim_delay": 0.09,
+                "anim_loop": True,
+            }],
         ),
         Node(
             package="robocat_hw",
