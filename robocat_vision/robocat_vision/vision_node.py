@@ -61,6 +61,10 @@ class VisionNode(Node):
         self.declare_parameter("emotion_backend", "cascade")
         self.declare_parameter("emotion_keras_model_path", "")
         self.declare_parameter("emotion_keras_label_encoder_path", "")
+        self.declare_parameter(
+            "emotion_keras_labels_json",
+            '["angry","disgusted","fearful","happy","neutral","sad","surprised"]',
+        )
         self.declare_parameter("emotion_interval_sec", 0.5)
         self.declare_parameter("emotion_cooldown_sec", 1.5)
         self.declare_parameter("emotion_min_confidence", 0.55)
@@ -112,6 +116,7 @@ class VisionNode(Node):
         self._emotion_model_hw: Tuple[int, int] = (48, 48)
         self._emotion_channels_last: bool = True
         self._emotion_backend: str = "cascade"
+        self._emotion_class_names: List[str] = []
         self._setup_emotion_backend()
         self._update_detection_flags()
 
@@ -187,32 +192,40 @@ class VisionNode(Node):
             return
 
         model_path, encoder_path = self._resolve_emotion_assets()
-        if not model_path or not encoder_path:
-            self.get_logger().warning("Emotion model/encoder not found. Using cascade.")
+        if not model_path:
+            self.get_logger().warning("Emotion model not found. Using cascade.")
             self._emotion_backend = "cascade"
             return
 
         try:
             self._emotion_model = keras_load_model(str(model_path), compile=False, safe_mode=False)
-            with open(encoder_path, "rb") as f:
-                self._emotion_label_encoder = pickle.load(f)
-            if not self._has_emotion_labels(self._emotion_label_encoder):
+            if encoder_path and encoder_path.exists():
+                with open(encoder_path, "rb") as f:
+                    self._emotion_label_encoder = pickle.load(f)
+            if self._emotion_label_encoder is not None and not self._has_emotion_labels(self._emotion_label_encoder):
                 self.get_logger().warning(
-                    "Loaded keras labels do not look like emotion classes. Using cascade."
+                    "Loaded keras labels do not look like emotion classes. Using configured label mapping."
                 )
-                self._emotion_backend = "cascade"
-                self._emotion_model = None
+                self._emotion_class_names = self._load_emotion_labels_from_param()
                 self._emotion_label_encoder = None
-                return
+            elif self._emotion_label_encoder is None:
+                self.get_logger().warning(
+                    "No valid emotion label encoder found. Using configured label mapping."
+                )
+                self._emotion_class_names = self._load_emotion_labels_from_param()
+            else:
+                classes = getattr(self._emotion_label_encoder, "classes_", [])
+                self._emotion_class_names = [str(c).strip().lower() for c in classes]
             self._configure_emotion_input()
             self.get_logger().info(
-                f"Keras emotion backend ready (model={model_path.name}, labels={encoder_path.name})."
+                f"Keras emotion backend ready (model={model_path.name})."
             )
         except Exception as exc:
             self.get_logger().warning(f"Failed to load keras emotion backend: {exc}. Using cascade.")
             self._emotion_backend = "cascade"
             self._emotion_model = None
             self._emotion_label_encoder = None
+            self._emotion_class_names = []
 
     def _has_emotion_labels(self, encoder: Any) -> bool:
         classes = getattr(encoder, "classes_", None)
@@ -233,6 +246,20 @@ class VisionNode(Node):
         }
         values = {str(v).strip().lower() for v in classes}
         return len(values.intersection(known)) >= 2
+
+    def _load_emotion_labels_from_param(self) -> List[str]:
+        raw = str(self.get_parameter("emotion_keras_labels_json").value or "").strip()
+        fallback = ["angry", "disgusted", "fearful", "happy", "neutral", "sad", "surprised"]
+        if not raw:
+            return fallback
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                labels = [str(v).strip().lower() for v in parsed if str(v).strip()]
+                return labels or fallback
+        except Exception:
+            pass
+        return fallback
 
     def _resolve_emotion_assets(self) -> Tuple[Optional[Path], Optional[Path]]:
         model_cfg = str(self.get_parameter("emotion_keras_model_path").value).strip()
@@ -289,7 +316,7 @@ class VisionNode(Node):
         return mapping.get(value, "default")
 
     def _predict_keras_emotion(self, roi_gray) -> Tuple[str, float]:
-        if self._emotion_model is None or self._emotion_label_encoder is None or np is None:
+        if self._emotion_model is None or np is None:
             return "default", 0.0
 
         target_h, target_w = self._emotion_model_hw
@@ -311,12 +338,15 @@ class VisionNode(Node):
         conf = float(pred_vec[idx])
 
         label = "default"
-        try:
-            label = str(self._emotion_label_encoder.inverse_transform([idx])[0])
-        except Exception:
-            classes = getattr(self._emotion_label_encoder, "classes_", None)
-            if classes is not None and len(classes) > idx:
-                label = str(classes[idx])
+        if self._emotion_label_encoder is not None:
+            try:
+                label = str(self._emotion_label_encoder.inverse_transform([idx])[0])
+            except Exception:
+                classes = getattr(self._emotion_label_encoder, "classes_", None)
+                if classes is not None and len(classes) > idx:
+                    label = str(classes[idx])
+        elif self._emotion_class_names and idx < len(self._emotion_class_names):
+            label = self._emotion_class_names[idx]
         return self._map_emotion_label(label), conf
 
     def _on_mode(self, msg: String) -> None:
