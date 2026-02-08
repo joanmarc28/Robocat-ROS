@@ -128,6 +128,9 @@ class ModeManagerNode(Node):
     def _set_mode(self, mode: str) -> None:
         if not mode:
             return
+        # Legacy alias: human mode is merged into cat mode.
+        if mode == "human":
+            mode = "cat"
         if mode == self._mode:
             return
         self._mode = mode
@@ -219,17 +222,6 @@ class ModeManagerNode(Node):
             if event_type.startswith("human_emotion_angry"):
                 return Action(movement="walk_back", oled_anim="angry", audio_emotion="angry")
             return Action(movement="patrol", oled_anim="patrol")
-
-        if mode == "human":
-            if event_type.startswith("human_emotion_happy"):
-                return Action(movement="maneta", oled_anim="happy", audio_emotion="happy")
-            if event_type.startswith("human_emotion_sad"):
-                return Action(movement="sit", oled_anim="sad", audio_emotion="sad")
-            if event_type.startswith("human_emotion_angry"):
-                return Action(movement="walk_back", oled_anim="angry", audio_emotion="angry")
-            if event_type.startswith("human_emotion_surprised"):
-                return Action(movement="strech", oled_anim="surprised", audio_emotion="surprised")
-            return Action(oled_anim="default")
 
         if mode == "city":
             if event_type == "container_detected":

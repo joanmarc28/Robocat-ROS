@@ -159,14 +159,14 @@ class VisionNode(Node):
 
     def _update_detection_flags(self) -> None:
         # Fixed simple rules by mode:
-        # police -> plate, city -> container, human/cat -> emotion.
+        # police -> plate, city -> container, cat/unknown -> emotion.
         mode = self._mode_name
         if mode == "police":
             want_plate, want_container, want_emotion = True, False, False
         elif mode == "city":
             want_plate, want_container, want_emotion = False, True, False
         else:
-            # human, cat and unknown fallback
+            # cat and unknown fallback
             want_plate, want_container, want_emotion = False, False, True
 
         self._plate_enabled = self._base_plate_enabled and want_plate

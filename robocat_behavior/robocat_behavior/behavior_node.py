@@ -188,7 +188,7 @@ class BehaviorNode(Node):
         self._send("audio_emotion", "happy", self._pub_audio_emotion)
         self._send("movement", "endavant", self._pub_move)
 
-    def _handle_human(self, emotion: str, context: Dict[str, Any]) -> None:
+    def _handle_emotion(self, emotion: str, context: Dict[str, Any]) -> None:
         emotion = emotion or "default"
         attention = _to_bool(context.get("attention"))
         eye_contact = _to_bool(context.get("eye_contact"))
@@ -269,10 +269,10 @@ class BehaviorNode(Node):
             self._handle_city(event_type)
             return
 
-        # human / cat mode uses human_emotion events
+        # Cat mode uses human_emotion events from vision.
         if event_type == "human_emotion":
             emotion = str(data.get("emotion") or "default").strip().lower()
-            self._handle_human(emotion, data)
+            self._handle_emotion(emotion, data)
             return
 
     def _tick(self) -> None:
