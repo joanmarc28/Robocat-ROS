@@ -32,6 +32,7 @@ class VisionNode(Node):
     def __init__(self) -> None:
         super().__init__("vision_node")
         self.declare_parameter("enabled", True)
+        self.declare_parameter("mode_topic", "/robot/mode")
         self.declare_parameter("camera_device", "/dev/video2")
         self.declare_parameter("camera_width", 640)
         self.declare_parameter("camera_height", 480)
@@ -61,17 +62,24 @@ class VisionNode(Node):
         if _CV2_ERROR is not None:
             self.get_logger().error(f"OpenCV not installed: {_CV2_ERROR}")
             return
-        self._plate_enabled = bool(self.get_parameter("detect_plate").value)
-        self._container_enabled = bool(self.get_parameter("detect_container").value)
+        self._base_plate_enabled = bool(self.get_parameter("detect_plate").value)
+        self._base_container_enabled = bool(self.get_parameter("detect_container").value)
+        self._base_emotion_enabled = bool(self.get_parameter("detect_human_emotion").value)
+        self._plate_enabled = self._base_plate_enabled
+        self._container_enabled = self._base_container_enabled
+        self._emotion_enabled = self._base_emotion_enabled
+        self._mode_name = "cat"
         if self._plate_enabled and _PLATE_IMPORT_ERROR is not None:
             self.get_logger().warning(
                 f"Plate detection disabled (missing deps): {_PLATE_IMPORT_ERROR}"
             )
+            self._base_plate_enabled = False
             self._plate_enabled = False
         if self._container_enabled and _CONTAINER_IMPORT_ERROR is not None:
             self.get_logger().warning(
                 f"Container detection disabled (missing deps): {_CONTAINER_IMPORT_ERROR}"
             )
+            self._base_container_enabled = False
             self._container_enabled = False
 
         self._last_emotion: str = ""
@@ -80,6 +88,14 @@ class VisionNode(Node):
         self._face_cascade = None
         self._smile_cascade = None
         self._setup_emotion_backend()
+        self._update_detection_flags()
+
+        self.create_subscription(
+            String,
+            str(self.get_parameter("mode_topic").value),
+            self._on_mode,
+            10,
+        )
 
         self._cap = self._open_camera()
         if self._cap is None:
@@ -107,7 +123,7 @@ class VisionNode(Node):
         return cap
 
     def _setup_emotion_backend(self) -> None:
-        if not bool(self.get_parameter("detect_human_emotion").value):
+        if not self._base_emotion_enabled:
             return
         backend = str(self.get_parameter("emotion_backend").value).strip().lower()
         if backend != "cascade":
@@ -126,6 +142,37 @@ class VisionNode(Node):
         if self._smile_cascade.empty():
             self._smile_cascade = None
             self.get_logger().warning("Smile cascade not available; happy detection degraded.")
+
+    def _on_mode(self, msg: String) -> None:
+        raw = (msg.data or "").strip().lower()
+        if not raw:
+            return
+        mode = raw.split(":", 1)[0].strip() if ":" in raw else raw
+        if not mode:
+            return
+        if mode == self._mode_name:
+            return
+        self._mode_name = mode
+        self._update_detection_flags()
+
+    def _update_detection_flags(self) -> None:
+        # Fixed simple rules by mode:
+        # police -> plate, city -> container, human/cat -> emotion.
+        mode = self._mode_name
+        if mode == "police":
+            want_plate, want_container, want_emotion = True, False, False
+        elif mode == "city":
+            want_plate, want_container, want_emotion = False, True, False
+        else:
+            # human, cat and unknown fallback
+            want_plate, want_container, want_emotion = False, False, True
+
+        self._plate_enabled = self._base_plate_enabled and want_plate
+        self._container_enabled = self._base_container_enabled and want_container
+        self._emotion_enabled = self._base_emotion_enabled and want_emotion
+        self.get_logger().info(
+            f"Vision mode={mode} -> plate={self._plate_enabled} container={self._container_enabled} emotion={self._emotion_enabled}"
+        )
 
     def _publish(self, topic: String, payload: Dict[str, Any]) -> None:
         def _json_default(value: Any) -> Any:
@@ -230,7 +277,7 @@ class VisionNode(Node):
         h, w = frame.shape[:2]
         boxes = []
 
-        if bool(self.get_parameter("detect_human_emotion").value):
+        if self._emotion_enabled:
             now = time.time()
             if now < self._next_emotion_ts:
                 emotion_data = None
