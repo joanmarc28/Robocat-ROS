@@ -159,7 +159,11 @@ class BehaviorNode(Node):
         self._event_anim_active = True
         self._event_anim_name = (anim or "").strip().lower()
         hold = float(self.get_parameter("event_anim_hold_sec").value)
-        self._event_anim_deadline = time.time() + max(0.0, hold)
+        # hold <= 0 means "no timeout": wait for OLED done/stopped state.
+        if hold > 0.0:
+            self._event_anim_deadline = time.time() + hold
+        else:
+            self._event_anim_deadline = 0.0
 
     def _on_oled_anim_state(self, msg: String) -> None:
         state = (msg.data or "").strip().lower()
