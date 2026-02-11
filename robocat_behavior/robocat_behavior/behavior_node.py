@@ -100,6 +100,7 @@ class BehaviorNode(Node):
         self._plate_history: List[str] = []
         self._event_anim_active: bool = False
         self._event_anim_deadline: float = 0.0
+        self._event_anim_name: str = ""
 
         self.create_subscription(
             String, self.get_parameter("mode_topic").value, self._on_mode, 10
@@ -135,6 +136,9 @@ class BehaviorNode(Node):
             mode, submode = raw.split(":", 1)
         else:
             mode, submode = raw, "default"
+        # Keep backward compatibility: old "human" mode maps to "cat".
+        if mode == "human":
+            mode = "cat"
         self._mode = mode or "cat"
         self._submode = submode or "default"
         self._send_idle_anim(force=True)
@@ -147,9 +151,13 @@ class BehaviorNode(Node):
         return str(self.get_parameter("cat_idle_anim").value)
 
     def _set_event_anim(self, anim: str) -> None:
+        # Do not interrupt an active one-shot emotion animation.
+        if self._event_anim_active:
+            return
         # one-shot event animation: play full sequence once, then return to idle
         self._send("oled_anim", f"{anim}|once", self._pub_oled_anim)
         self._event_anim_active = True
+        self._event_anim_name = (anim or "").strip().lower()
         hold = float(self.get_parameter("event_anim_hold_sec").value)
         self._event_anim_deadline = time.time() + max(0.0, hold)
 
@@ -157,10 +165,27 @@ class BehaviorNode(Node):
         state = (msg.data or "").strip().lower()
         if not state:
             return
-        if state.startswith("done:") or state.startswith("stopped:"):
-            self._event_anim_active = False
-            self._event_anim_deadline = 0.0
-            self._send_idle_anim(force=True)
+        if not (state.startswith("done:") or state.startswith("stopped:")):
+            return
+        if not self._event_anim_active:
+            return
+
+        # Example states:
+        #   done:happy
+        #   stopped:happy|once
+        #   stopped:default
+        anim_state = state.split(":", 1)[1].strip()
+        anim_name = anim_state.split("|", 1)[0].strip()
+        if not anim_name:
+            return
+        if self._event_anim_name and anim_name != self._event_anim_name:
+            # Ignore unrelated idle/default stop events.
+            return
+
+        self._event_anim_active = False
+        self._event_anim_deadline = 0.0
+        self._event_anim_name = ""
+        self._send_idle_anim(force=True)
 
     def _send_idle_anim(self, force: bool = False) -> None:
         if self._event_anim_active:
@@ -168,6 +193,7 @@ class BehaviorNode(Node):
             if self._event_anim_deadline > 0.0 and time.time() >= self._event_anim_deadline:
                 self._event_anim_active = False
                 self._event_anim_deadline = 0.0
+                self._event_anim_name = ""
             elif not force:
                 return
         self._send("oled_anim", self._idle_anim(), self._pub_oled_anim)
