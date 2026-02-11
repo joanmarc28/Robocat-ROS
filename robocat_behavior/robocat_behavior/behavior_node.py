@@ -212,12 +212,22 @@ class BehaviorNode(Node):
         raw_emotion = (emotion or "default").strip().lower()
         normalize = {
             "neutral": "default",
+            "none": "default",
             "surprise": "surprised",
+            "surprised": "surprised",
             "fear": "scared",
             "fearful": "scared",
             "disgust": "disgusted",
+            "disgusted": "disgusted",
+            "angry": "angry",
+            "anger": "angry",
+            "happy": "happy",
+            "happiness": "happy",
+            "sadness": "sad",
+            "sad": "sad",
         }
         emotion = normalize.get(raw_emotion, raw_emotion)
+        self.get_logger().info(f"Emotion event: raw={raw_emotion} normalized={emotion} mode={self._mode}")
         attention = _to_bool(context.get("attention"))
         eye_contact = _to_bool(context.get("eye_contact"))
         gesture = str(context.get("gesture") or "unknown").lower()
