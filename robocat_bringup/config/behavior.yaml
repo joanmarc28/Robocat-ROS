@@ -38,7 +38,7 @@ behavior_node:
     city_idle_anim: "city"
     police_idle_anim: "patrol"
     city_container_anim: "city"
-    city_container_play_file: "Robocat_on_Patrol.wav"
+    city_container_play_file: "container_detect.wav"
     police_detect_anim: "patrol"
     plate_similarity_threshold: 0.85
     plate_max_history: 5

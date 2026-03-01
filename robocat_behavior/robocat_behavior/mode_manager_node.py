@@ -116,7 +116,7 @@ class ModeManagerNode(Node):
             "sadness": "sad",
         }
         token = normalize.get(token, token)
-        valid = {"default", "happy", "sad", "angry", "scared", "disgusted", "surprised"}
+        valid = {"default", "happy", "sad", "angry", "scared", "disgusted", "surprised", "patrol"}
         return token if token in valid else "default"
 
     def _on_command(self, msg: String) -> None:
@@ -141,7 +141,7 @@ class ModeManagerNode(Node):
             return
 
         # Convenience: allow direct emotion commands from web/UI buttons.
-        if lower in {"default", "happy", "sad", "angry", "scared", "disgusted", "surprised"}:
+        if lower in {"default", "happy", "sad", "angry", "scared", "disgusted", "surprised", "patrol"}:
             emotion = self._normalize_emotion_token(lower)
             self._emit(Action(audio_emotion=emotion, oled_anim=emotion))
             return
