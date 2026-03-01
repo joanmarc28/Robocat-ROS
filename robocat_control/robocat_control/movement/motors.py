@@ -89,9 +89,9 @@ class EstructuraPotes:
 
         self.legs = [
             Pota(servos[8], servos[7], True,True),  # Pota 1
-            Pota(servos[10], servos[11], False,True),  # Pota 2
+            Pota(servos[11], servos[10], False,True),  # Pota 2
             Pota(servos[2], servos[1], True, False),  # Pota 3
-            Pota(servos[4], servos[5], False, False)   # Pota 4
+            Pota(servos[5], servos[4], False, False)   # Pota 4
         ]
         threads = []
 
