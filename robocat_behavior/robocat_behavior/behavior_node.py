@@ -65,6 +65,7 @@ class BehaviorNode(Node):
     def __init__(self) -> None:
         super().__init__("behavior_node")
         self.declare_parameter("mode_topic", "/robot/mode")
+        self.declare_parameter("command_topic", "/robot/command")
         self.declare_parameter("events_topic", "/vision/events")
         self.declare_parameter("movement_topic", "/robocat/cmd")
         self.declare_parameter("oled_anim_topic", "/oled_anim")
@@ -123,6 +124,9 @@ class BehaviorNode(Node):
 
         self.create_subscription(
             String, self.get_parameter("mode_topic").value, self._on_mode, 10
+        )
+        self.create_subscription(
+            String, self.get_parameter("command_topic").value, self._on_command, 10
         )
         self.create_subscription(
             String, self.get_parameter("wake_topic").value, self._on_wake, 10
@@ -223,6 +227,37 @@ class BehaviorNode(Node):
             elif not force:
                 return
         self._send("oled_anim", self._idle_anim(), self._pub_oled_anim)
+
+    def _normalize_emotion_token(self, raw: str) -> str:
+        token = (raw or "").strip().lower()
+        normalize = {
+            "neutral": "default",
+            "none": "default",
+            "surprise": "surprised",
+            "fear": "scared",
+            "fearful": "scared",
+            "disgust": "disgusted",
+            "anger": "angry",
+            "happiness": "happy",
+            "sadness": "sad",
+        }
+        token = normalize.get(token, token)
+        valid = {"default", "happy", "sad", "angry", "scared", "disgusted", "surprised", "patrol", "city"}
+        return token if token in valid else ""
+
+    def _on_command(self, msg: String) -> None:
+        raw = (msg.data or "").strip()
+        if not raw:
+            return
+        lower = raw.lower()
+        if lower.startswith("emotion:"):
+            emotion = self._normalize_emotion_token(lower.split(":", 1)[1].strip())
+            if emotion:
+                self._set_event_anim(emotion)
+            return
+        emotion = self._normalize_emotion_token(lower)
+        if emotion:
+            self._set_event_anim(emotion)
 
     def _maybe_sing_happy(self) -> None:
         if not bool(self.get_parameter("happy_sing_enabled").value):

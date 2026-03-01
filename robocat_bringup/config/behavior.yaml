@@ -17,6 +17,7 @@ mode_manager_node:
 behavior_node:
   ros__parameters:
     mode_topic: "/robot/mode"
+    command_topic: "/robot/command"
     events_topic: "/vision/events"
     movement_topic: "/robocat/cmd"
     oled_anim_topic: "/oled_anim"

@@ -102,6 +102,8 @@ class OledMessageNode(Node):
 
         self._font = self._load_font()
         self._frame_cache: Dict[Path, List["Image.Image"]] = {}
+        self._assets_candidates: List[Path] = []
+        self._missing_anim_warned: set[str] = set()
         self._assets_root = self._resolve_assets_root()
         self._anim_thread: Optional[threading.Thread] = None
         self._anim_stop = threading.Event()
@@ -132,10 +134,24 @@ class OledMessageNode(Node):
         # Fallback for development runs from source workspace.
         candidates.append(Path(__file__).resolve().parents[2] / "assets" / "eyes_img")
 
+        existing: List[Path] = []
+        seen: set[Path] = set()
         for path in candidates:
-            if path.exists():
-                self.get_logger().info(f"OLED assets path: {path}")
-                return path
+            resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            if resolved.exists():
+                existing.append(resolved)
+
+        self._assets_candidates = existing
+        if existing:
+            self.get_logger().info(f"OLED assets path: {existing[0]}")
+            if len(existing) > 1:
+                self.get_logger().info(
+                    "OLED assets fallbacks: " + ", ".join(str(p) for p in existing[1:])
+                )
+            return existing[0]
 
         self.get_logger().warning(
             f"OLED assets path not found. Tried: {', '.join(str(p) for p in candidates)}"
@@ -300,7 +316,12 @@ class OledMessageNode(Node):
         frames_left = self._load_frames(folder, "left")
         frames_right = self._load_frames(folder, "right")
         if not frames_left and not frames_right:
-            self.get_logger().warning(f"No frames found for {folder}")
+            if folder not in self._missing_anim_warned:
+                self._missing_anim_warned.add(folder)
+                self.get_logger().warning(
+                    f"No frames found for {folder} in assets roots: "
+                    + ", ".join(str(p) for p in self._assets_candidates or [self._assets_root])
+                )
             self._publish_anim_state(f"done:{folder}")
             return
 
@@ -328,6 +349,12 @@ class OledMessageNode(Node):
         if Image is None:
             raise RuntimeError("Pillow is not installed")
         frame_dir = self._assets_root / folder / side
+        if not frame_dir.exists():
+            for root in self._assets_candidates:
+                candidate = root / folder / side
+                if candidate.exists():
+                    frame_dir = candidate
+                    break
         if frame_dir in self._frame_cache:
             return self._frame_cache[frame_dir]
         if not frame_dir.exists():
