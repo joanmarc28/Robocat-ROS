@@ -144,6 +144,22 @@ class EstructuraPotes:
             up_steps, down_steps = leg._planned_steps(steps, inter_method)
             trajectories.append((leg.servo_up, up_steps, leg.servo_down, down_steps))
 
+        # Skip redundant movement if every target is already within deadband.
+        requires_motion = False
+        for servo_up, up_steps, servo_down, down_steps in trajectories:
+            up_target = _normalize_angle(up_steps[-1])
+            down_target = _normalize_angle(down_steps[-1])
+            up_prev = _last_servo_angles.get(id(servo_up))
+            down_prev = _last_servo_angles.get(id(servo_down))
+            if up_prev is None or abs(up_target - up_prev) >= _DEADBAND_DEG:
+                requires_motion = True
+                break
+            if down_prev is None or abs(down_target - down_prev) >= _DEADBAND_DEG:
+                requires_motion = True
+                break
+        if not requires_motion:
+            return
+
         delay = t / steps
 
         for idx in range(steps):

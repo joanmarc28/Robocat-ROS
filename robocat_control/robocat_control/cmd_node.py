@@ -19,6 +19,9 @@ class CmdNode(Node):
         super().__init__("robocat_cmd")
         self.sub = self.create_subscription(String, "/robocat/cmd", self.on_cmd, 10)
         self._queue: "queue.Queue[str]" = queue.Queue()
+        self._last_enqueued_action = ""
+        self._last_enqueued_ts = 0.0
+        self._dedupe_window_sec = 0.8
         self._estructura = None
         try:
             self._estructura = EstructuraPotes()
@@ -31,6 +34,11 @@ class CmdNode(Node):
         action = (msg.data or "").strip().lower()
         if not action:
             return
+        now = time.monotonic()
+        if action == self._last_enqueued_action and (now - self._last_enqueued_ts) < self._dedupe_window_sec:
+            return
+        self._last_enqueued_action = action
+        self._last_enqueued_ts = now
         self._queue.put(action)
 
     def _run_queue(self) -> None:

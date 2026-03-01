@@ -14,11 +14,11 @@ position_states = {
     "sit"  :            ( 0,  -1/2),
     "sit_down"  :       ( 0,  -0.35),
     "normal":           (0.5, -0.5),
-    "recte":            (0, -0.92),
+    "recte":            (0, -0.82),
     "strech":           (math.cos(math.pi/3), math.sin(math.pi/3)),
     "front_zero":       (1, 0),
     "back_zero":        (-1, 0),
-    "up":               (0+X_CENTER, Y_PLANE),
+    "up":               (0+X_CENTER, Y_PLANE + 0.06),
 
     #short stand positions
     "center" :          (   0*X_PLANE+X_CENTER,  Y_PLANE),
