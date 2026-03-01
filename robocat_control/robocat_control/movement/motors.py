@@ -16,7 +16,10 @@ pca.frequency = 50  # 50Hz es l'estandard per a servos
 
 # Inicialitza els 10 primers canals com a servos
 _i2c_lock = threading.Lock()
-_DEADBAND_DEG = 1.0
+_DEADBAND_DEG = 2.5
+_MAX_DELTA_DEG_PER_STEP = 4.0
+_RELEASE_AFTER_MOVE = True
+_RELEASE_DELAY_SEC = 0.25
 _last_servo_angles = {}
 servos = []
 for i in range(16):
@@ -119,11 +122,25 @@ class EstructuraPotes:
         # Force linear interpolation globally to reduce jitter.
         inter_method = "linear"
         steps = max(1, int(t / 0.1))
-        delay = t / steps
         trajectories = []
-        for leg in legs:
-            up_steps, down_steps = leg._planned_steps(steps, inter_method)
-            trajectories.append((leg.servo_up, up_steps, leg.servo_down, down_steps))
+
+        while True:
+            trajectories = []
+            max_delta = 0.0
+            for leg in legs:
+                up_steps, down_steps = leg._planned_steps(steps, inter_method)
+                trajectories.append((leg.servo_up, up_steps, leg.servo_down, down_steps))
+
+                if len(up_steps) > 1:
+                    max_delta = max(max_delta, max(abs(b - a) for a, b in zip(up_steps, up_steps[1:])))
+                if len(down_steps) > 1:
+                    max_delta = max(max_delta, max(abs(b - a) for a, b in zip(down_steps, down_steps[1:])))
+
+            if max_delta <= _MAX_DELTA_DEG_PER_STEP:
+                break
+            steps += 1
+
+        delay = t / steps
 
         for idx in range(steps):
             with _i2c_lock:
@@ -131,6 +148,18 @@ class EstructuraPotes:
                     _apply_servo_angle(servo_up, up_steps[idx])
                     _apply_servo_angle(servo_down, down_steps[idx])
             time.sleep(delay)
+
+        if _RELEASE_AFTER_MOVE:
+            time.sleep(_RELEASE_DELAY_SEC)
+            with _i2c_lock:
+                released = set()
+                for leg in legs:
+                    if id(leg.servo_up) not in released:
+                        leg.servo_up.angle = None
+                        released.add(id(leg.servo_up))
+                    if id(leg.servo_down) not in released:
+                        leg.servo_down.angle = None
+                        released.add(id(leg.servo_down))
     
     def set_body_state(self,text):
         for leg in self.legs:
