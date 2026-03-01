@@ -18,7 +18,7 @@ pca.frequency = 50  # 50Hz es l'estandard per a servos
 _i2c_lock = threading.Lock()
 _DEADBAND_DEG = 2.5
 _MAX_DELTA_DEG_PER_STEP = 4.0
-_RELEASE_AFTER_MOVE = True
+_RELEASE_AFTER_MOVE = False
 _RELEASE_DELAY_SEC = 0.25
 _last_servo_angles = {}
 servos = []
@@ -121,24 +121,26 @@ class EstructuraPotes:
     def _move_legs(self, legs, t=0.3, inter_method="linear"):
         # Force linear interpolation globally to reduce jitter.
         inter_method = "linear"
-        steps = max(1, int(t / 0.1))
+        base_steps = max(1, int(t / 0.1))
         trajectories = []
+        max_delta = 0.0
+        for leg in legs:
+            up_steps, down_steps = leg._planned_steps(base_steps, inter_method)
+            trajectories.append((leg, up_steps, down_steps))
+            if len(up_steps) > 1:
+                max_delta = max(max_delta, max(abs(b - a) for a, b in zip(up_steps, up_steps[1:])))
+            if len(down_steps) > 1:
+                max_delta = max(max_delta, max(abs(b - a) for a, b in zip(down_steps, down_steps[1:])))
 
-        while True:
-            trajectories = []
-            max_delta = 0.0
-            for leg in legs:
-                up_steps, down_steps = leg._planned_steps(steps, inter_method)
-                trajectories.append((leg.servo_up, up_steps, leg.servo_down, down_steps))
+        scale = 1.0
+        if max_delta > _MAX_DELTA_DEG_PER_STEP and _MAX_DELTA_DEG_PER_STEP > 0:
+            scale = max_delta / _MAX_DELTA_DEG_PER_STEP
+        steps = min(120, max(base_steps, int(base_steps * scale + 0.999)))
 
-                if len(up_steps) > 1:
-                    max_delta = max(max_delta, max(abs(b - a) for a, b in zip(up_steps, up_steps[1:])))
-                if len(down_steps) > 1:
-                    max_delta = max(max_delta, max(abs(b - a) for a, b in zip(down_steps, down_steps[1:])))
-
-            if max_delta <= _MAX_DELTA_DEG_PER_STEP:
-                break
-            steps += 1
+        trajectories = []
+        for leg in legs:
+            up_steps, down_steps = leg._planned_steps(steps, inter_method)
+            trajectories.append((leg.servo_up, up_steps, leg.servo_down, down_steps))
 
         delay = t / steps
 
@@ -156,9 +158,11 @@ class EstructuraPotes:
                 for leg in legs:
                     if id(leg.servo_up) not in released:
                         leg.servo_up.angle = None
+                        _last_servo_angles.pop(id(leg.servo_up), None)
                         released.add(id(leg.servo_up))
                     if id(leg.servo_down) not in released:
                         leg.servo_down.angle = None
+                        _last_servo_angles.pop(id(leg.servo_down), None)
                         released.add(id(leg.servo_down))
     
     def set_body_state(self,text):
