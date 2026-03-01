@@ -13,7 +13,7 @@ mic_node:
   ros__parameters:
     enabled: true
     stt_backend: "vosk"
-    wake_word: "hola"
+    wake_word: "robot"
     language: "ca"
     device_index: 1
     vosk_model_path: "/home/robocat-v2/.vosk/ca"

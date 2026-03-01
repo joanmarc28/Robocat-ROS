@@ -102,6 +102,23 @@ class ModeManagerNode(Node):
         if action.audio_say:
             self._send("audio_say", action.audio_say, self._pub_audio_say)
 
+    def _normalize_emotion_token(self, raw: str) -> str:
+        token = (raw or "").strip().lower()
+        normalize = {
+            "neutral": "default",
+            "none": "default",
+            "surprise": "surprised",
+            "fear": "scared",
+            "fearful": "scared",
+            "disgust": "disgusted",
+            "anger": "angry",
+            "happiness": "happy",
+            "sadness": "sad",
+        }
+        token = normalize.get(token, token)
+        valid = {"default", "happy", "sad", "angry", "scared", "disgusted", "surprised"}
+        return token if token in valid else "default"
+
     def _on_command(self, msg: String) -> None:
         raw = (msg.data or "").strip()
         if not raw:
@@ -116,10 +133,17 @@ class ModeManagerNode(Node):
             self._set_submode(submode.strip())
             return
         if lower.startswith("emotion:"):
-            self._emit(Action(audio_emotion=lower.split(":", 1)[1].strip()))
+            emotion = self._normalize_emotion_token(lower.split(":", 1)[1].strip())
+            self._emit(Action(audio_emotion=emotion, oled_anim=emotion))
             return
         if lower.startswith("say:"):
             self._emit(Action(audio_say=raw.split(":", 1)[1].strip()))
+            return
+
+        # Convenience: allow direct emotion commands from web/UI buttons.
+        if lower in {"default", "happy", "sad", "angry", "scared", "disgusted", "surprised"}:
+            emotion = self._normalize_emotion_token(lower)
+            self._emit(Action(audio_emotion=emotion, oled_anim=emotion))
             return
 
         # default: treat as movement command passthrough

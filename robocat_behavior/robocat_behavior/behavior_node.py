@@ -72,9 +72,13 @@ class BehaviorNode(Node):
         self.declare_parameter("oled_text_topic", "/oled_text")
         self.declare_parameter("audio_emotion_topic", "/audio/emotion")
         self.declare_parameter("audio_play_file_topic", "/audio/play_file")
+        self.declare_parameter("wake_topic", "/audio/wake")
         self.declare_parameter("happy_sing_enabled", True)
         self.declare_parameter("happy_sing_probability", 0.25)
         self.declare_parameter("happy_sing_cooldown_sec", 90.0)
+        self.declare_parameter("wake_sing_enabled", True)
+        self.declare_parameter("wake_sing_probability", 1.0)
+        self.declare_parameter("wake_sing_cooldown_sec", 20.0)
         self.declare_parameter(
             "happy_song_files",
             ["Neon_Guardian.mp3", "Neon_Prowler.mp3", "Robocat_on_Patrol.mp3"],
@@ -115,9 +119,13 @@ class BehaviorNode(Node):
         self._event_anim_deadline: float = 0.0
         self._event_anim_name: str = ""
         self._last_happy_song_ts: float = 0.0
+        self._last_wake_song_ts: float = 0.0
 
         self.create_subscription(
             String, self.get_parameter("mode_topic").value, self._on_mode, 10
+        )
+        self.create_subscription(
+            String, self.get_parameter("wake_topic").value, self._on_wake, 10
         )
         self.create_subscription(
             String, self.get_parameter("oled_anim_state_topic").value, self._on_oled_anim_state, 10
@@ -219,11 +227,19 @@ class BehaviorNode(Node):
     def _maybe_sing_happy(self) -> None:
         if not bool(self.get_parameter("happy_sing_enabled").value):
             return
+        self._play_random_song(
+            "happy_sing_probability",
+            "happy_sing_cooldown_sec",
+            "_last_happy_song_ts",
+        )
+
+    def _play_random_song(self, probability_param: str, cooldown_param: str, last_ts_attr: str) -> None:
         now = time.time()
-        cooldown = float(self.get_parameter("happy_sing_cooldown_sec").value)
-        if now - self._last_happy_song_ts < cooldown:
+        cooldown = float(self.get_parameter(cooldown_param).value)
+        last_ts = float(getattr(self, last_ts_attr))
+        if now - last_ts < cooldown:
             return
-        probability = float(self.get_parameter("happy_sing_probability").value)
+        probability = float(self.get_parameter(probability_param).value)
         probability = max(0.0, min(1.0, probability))
         if random.random() > probability:
             return
@@ -235,7 +251,17 @@ class BehaviorNode(Node):
             return
         song = random.choice(songs)
         self._send("audio_play_file", song, self._pub_audio_play_file)
-        self._last_happy_song_ts = now
+        setattr(self, last_ts_attr, now)
+
+    def _on_wake(self, msg: String) -> None:
+        if not bool(self.get_parameter("wake_sing_enabled").value):
+            return
+        _ = (msg.data or "").strip()
+        self._play_random_song(
+            "wake_sing_probability",
+            "wake_sing_cooldown_sec",
+            "_last_wake_song_ts",
+        )
 
     def _plates_are_similar(self, plate1: str, plate2: str) -> bool:
         if not plate1 or not plate2:
