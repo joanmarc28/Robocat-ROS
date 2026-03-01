@@ -19,6 +19,7 @@ vision_node:
     detect_plate: true
     detect_container: true
     detect_human_emotion: true
+    emotion_enabled_modes: ["cat"]
     emotion_backend: "keras"
     emotion_keras_model_path: "/home/robocat-v2/robocat_ws/src/Robocat-ROS/robocat_vision/assets/models/emotion.keras"
     emotion_keras_label_encoder_path: ""

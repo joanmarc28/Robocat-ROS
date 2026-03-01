@@ -1,4 +1,5 @@
 import json
+import random
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -70,12 +71,21 @@ class BehaviorNode(Node):
         self.declare_parameter("oled_anim_state_topic", "/oled_anim_state")
         self.declare_parameter("oled_text_topic", "/oled_text")
         self.declare_parameter("audio_emotion_topic", "/audio/emotion")
+        self.declare_parameter("audio_play_file_topic", "/audio/play_file")
+        self.declare_parameter("happy_sing_enabled", True)
+        self.declare_parameter("happy_sing_probability", 0.25)
+        self.declare_parameter("happy_sing_cooldown_sec", 90.0)
+        self.declare_parameter(
+            "happy_song_files",
+            ["Neon_Guardian.mp3", "Neon_Prowler.mp3", "Robocat_on_Patrol.mp3"],
+        )
         self.declare_parameter("min_repeat_sec", 1.0)
         self.declare_parameter("event_anim_hold_sec", 2.5)
         self.declare_parameter("cat_idle_anim", "default")
         self.declare_parameter("city_idle_anim", "default")
         self.declare_parameter("police_idle_anim", "default")
         self.declare_parameter("city_container_anim", "surprised")
+        self.declare_parameter("city_container_play_file", "")
         self.declare_parameter("police_detect_anim", "patrol")
         self.declare_parameter("plate_similarity_threshold", 0.85)
         self.declare_parameter("plate_max_history", 5)
@@ -95,12 +105,16 @@ class BehaviorNode(Node):
         self._pub_audio_emotion = self.create_publisher(
             String, self.get_parameter("audio_emotion_topic").value, 10
         )
+        self._pub_audio_play_file = self.create_publisher(
+            String, self.get_parameter("audio_play_file_topic").value, 10
+        )
 
         self._last_sent: Dict[str, Tuple[float, str]] = {}
         self._plate_history: List[str] = []
         self._event_anim_active: bool = False
         self._event_anim_deadline: float = 0.0
         self._event_anim_name: str = ""
+        self._last_happy_song_ts: float = 0.0
 
         self.create_subscription(
             String, self.get_parameter("mode_topic").value, self._on_mode, 10
@@ -202,6 +216,27 @@ class BehaviorNode(Node):
                 return
         self._send("oled_anim", self._idle_anim(), self._pub_oled_anim)
 
+    def _maybe_sing_happy(self) -> None:
+        if not bool(self.get_parameter("happy_sing_enabled").value):
+            return
+        now = time.time()
+        cooldown = float(self.get_parameter("happy_sing_cooldown_sec").value)
+        if now - self._last_happy_song_ts < cooldown:
+            return
+        probability = float(self.get_parameter("happy_sing_probability").value)
+        probability = max(0.0, min(1.0, probability))
+        if random.random() > probability:
+            return
+        options = self.get_parameter("happy_song_files").value
+        if not isinstance(options, (list, tuple)):
+            return
+        songs = [str(x).strip() for x in options if str(x).strip()]
+        if not songs:
+            return
+        song = random.choice(songs)
+        self._send("audio_play_file", song, self._pub_audio_play_file)
+        self._last_happy_song_ts = now
+
     def _plates_are_similar(self, plate1: str, plate2: str) -> bool:
         if not plate1 or not plate2:
             return False
@@ -235,7 +270,11 @@ class BehaviorNode(Node):
         if event_type != "container_detected":
             return
         self._set_event_anim(str(self.get_parameter("city_container_anim").value))
-        self._send("audio_emotion", "happy", self._pub_audio_emotion)
+        city_sound = str(self.get_parameter("city_container_play_file").value).strip()
+        if city_sound:
+            self._send("audio_play_file", city_sound, self._pub_audio_play_file)
+        else:
+            self._send("audio_emotion", "happy", self._pub_audio_emotion)
         self._send("movement", "endavant", self._pub_move)
 
     def _handle_emotion(self, emotion: str, context: Dict[str, Any]) -> None:
@@ -306,6 +345,7 @@ class BehaviorNode(Node):
         friendly = {"wave", "thumbs_up", "ok", "open_hand", "peace"}
         if gesture in friendly or emotion == "happy":
             self._send("audio_emotion", "happy", self._pub_audio_emotion)
+            self._maybe_sing_happy()
             if cat_mode:
                 self._set_event_anim("happy")
             self._send("movement", "maneta", self._pub_move)

@@ -57,6 +57,7 @@ class VisionNode(Node):
         self.declare_parameter("detect_plate", True)
         self.declare_parameter("detect_container", True)
         self.declare_parameter("detect_human_emotion", True)
+        self.declare_parameter("emotion_enabled_modes", ["cat"])
         self.declare_parameter("ocr_enabled", False)
         self.declare_parameter("emotion_backend", "cascade")
         self.declare_parameter("emotion_keras_model_path", "")
@@ -362,22 +363,26 @@ class VisionNode(Node):
         self._update_detection_flags()
 
     def _update_detection_flags(self) -> None:
-        # Fixed simple rules by mode:
-        # police -> plate, city -> container, cat/unknown -> emotion.
+        # police -> plate, city -> container, emotion only in configured modes.
         mode = self._mode_name
-        if mode == "police":
-            want_plate, want_container, want_emotion = True, False, False
-        elif mode == "city":
-            want_plate, want_container, want_emotion = False, True, False
-        else:
-            # cat and unknown fallback
-            want_plate, want_container, want_emotion = False, False, True
+        want_plate = mode == "police"
+        want_container = mode == "city"
+
+        enabled_modes_param = self.get_parameter("emotion_enabled_modes").value
+        enabled_modes = set()
+        if isinstance(enabled_modes_param, (list, tuple)):
+            enabled_modes = {str(v).strip().lower() for v in enabled_modes_param if str(v).strip()}
+        elif isinstance(enabled_modes_param, str):
+            enabled_modes = {m.strip().lower() for m in enabled_modes_param.split(",") if m.strip()}
+        if not enabled_modes:
+            enabled_modes = {"cat"}
+        want_emotion = mode in enabled_modes
 
         self._plate_enabled = self._base_plate_enabled and want_plate
         self._container_enabled = self._base_container_enabled and want_container
         self._emotion_enabled = self._base_emotion_enabled and want_emotion
         self.get_logger().info(
-            f"Vision mode={mode} -> plate={self._plate_enabled} container={self._container_enabled} emotion={self._emotion_enabled}"
+            f"Vision mode={mode} -> plate={self._plate_enabled} container={self._container_enabled} emotion={self._emotion_enabled} emotion_modes={sorted(enabled_modes)}"
         )
 
     def _publish(self, topic: String, payload: Dict[str, Any]) -> None:

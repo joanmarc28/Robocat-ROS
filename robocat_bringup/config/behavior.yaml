@@ -23,12 +23,18 @@ behavior_node:
     oled_anim_state_topic: "/oled_anim_state"
     oled_text_topic: "/oled_text"
     audio_emotion_topic: "/audio/emotion"
+    audio_play_file_topic: "/audio/play_file"
+    happy_sing_enabled: true
+    happy_sing_probability: 0.25
+    happy_sing_cooldown_sec: 90.0
+    happy_song_files: ["Neon_Guardian.wav", "Neon_Prowler.wav", "Robocat_on_Patrol.wav"]
     min_repeat_sec: 1.0
     event_anim_hold_sec: 0.0
     cat_idle_anim: "default"
-    city_idle_anim: "default"
-    police_idle_anim: "default"
-    city_container_anim: "surprised"
+    city_idle_anim: "city"
+    police_idle_anim: "patrol"
+    city_container_anim: "city"
+    city_container_play_file: "Robocat_on_Patrol.wav"
     police_detect_anim: "patrol"
     plate_similarity_threshold: 0.85
     plate_max_history: 5
