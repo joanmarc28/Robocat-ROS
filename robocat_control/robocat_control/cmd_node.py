@@ -1,4 +1,3 @@
-import queue
 import threading
 import time
 
@@ -18,7 +17,9 @@ class CmdNode(Node):
     def __init__(self):
         super().__init__("robocat_cmd")
         self.sub = self.create_subscription(String, "/robocat/cmd", self.on_cmd, 10)
-        self._queue: "queue.Queue[str]" = queue.Queue()
+        self._pending_lock = threading.Lock()
+        self._pending_action = None
+        self._pending_event = threading.Event()
         self._last_enqueued_action = ""
         self._last_enqueued_ts = 0.0
         self._dedupe_window_sec = 0.8
@@ -39,17 +40,26 @@ class CmdNode(Node):
             return
         self._last_enqueued_action = action
         self._last_enqueued_ts = now
-        self._queue.put(action)
+        with self._pending_lock:
+            # Latest command wins: prevents backlog and stale delayed motions.
+            self._pending_action = action
+            self._pending_event.set()
 
     def _run_queue(self) -> None:
         while rclpy.ok():
-            action = self._queue.get()
+            self._pending_event.wait(timeout=0.2)
+            if not self._pending_event.is_set():
+                continue
+            with self._pending_lock:
+                action = self._pending_action
+                self._pending_action = None
+                self._pending_event.clear()
+            if not action:
+                continue
             try:
                 self._handle_action(action)
             except Exception as exc:
                 self.get_logger().error(f"Error executant '{action}': {exc}")
-            finally:
-                self._queue.task_done()
 
     def _handle_action(self, action: str) -> None:
         if not self._estructura:

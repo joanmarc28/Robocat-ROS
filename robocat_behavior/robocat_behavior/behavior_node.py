@@ -70,6 +70,7 @@ class BehaviorNode(Node):
         self.declare_parameter("oled_anim_state_topic", "/oled_anim_state")
         self.declare_parameter("oled_text_topic", "/oled_text")
         self.declare_parameter("audio_emotion_topic", "/audio/emotion")
+        self.declare_parameter("movement_enabled", False)
         self.declare_parameter("min_repeat_sec", 1.0)
         self.declare_parameter("event_anim_hold_sec", 2.5)
         self.declare_parameter("cat_idle_anim", "default")
@@ -117,6 +118,8 @@ class BehaviorNode(Node):
 
     def _send(self, key: str, value: str, publisher) -> None:
         if not value:
+            return
+        if key == "movement" and not bool(self.get_parameter("movement_enabled").value):
             return
         min_repeat = float(self.get_parameter("min_repeat_sec").value)
         last_time, last_value = self._last_sent.get(key, (0.0, ""))
