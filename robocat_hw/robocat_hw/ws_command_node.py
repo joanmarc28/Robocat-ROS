@@ -125,6 +125,27 @@ class WebsocketCommandNode(Node):
     async def _handle_message(self, websocket, message: dict) -> None:
         msg_type = str(message.get("type") or "").strip().lower()
         request_id = message.get("request_id")
+        def _normalize_emotion(raw: str) -> str:
+            token = (raw or "").strip().lower().replace(" ", "_")
+            alias = {
+                "neutral": "default",
+                "none": "default",
+                "surprise": "surprised",
+                "fear": "scared",
+                "fearful": "scared",
+                "disgust": "disgusted",
+                "anger": "angry",
+                "happiness": "happy",
+                "sadness": "sad",
+                "feliz": "happy",
+                "content": "happy",
+                "trist": "sad",
+                "enfadat": "angry",
+                "espantat": "scared",
+            }
+            token = alias.get(token, token)
+            valid = {"default", "happy", "sad", "angry", "scared", "disgusted", "surprised", "patrol", "city"}
+            return token if token in valid else ""
         if msg_type == "audio_language":
             language = str(message.get("language") or "").strip().lower()
             success = False
@@ -143,6 +164,39 @@ class WebsocketCommandNode(Node):
                 )
             )
             return
+        if msg_type in {"emotion", "mood", "expression"}:
+            emotion_raw = str(
+                message.get("emotion")
+                or message.get("mood")
+                or message.get("expression")
+                or message.get("action")
+                or ""
+            ).strip()
+            emotion = _normalize_emotion(emotion_raw)
+            if not emotion:
+                await websocket.send(
+                    json.dumps(
+                        {
+                            "response_to": request_id,
+                            "success": False,
+                            "message": f"unknown emotion '{emotion_raw}'",
+                        }
+                    )
+                )
+                return
+            msg = String()
+            msg.data = f"emotion:{emotion}"
+            self._movement_pub.publish(msg)
+            await websocket.send(
+                json.dumps(
+                    {
+                        "response_to": request_id,
+                        "success": True,
+                        "message": f"emotion {emotion} sent",
+                    }
+                )
+            )
+            return
         if msg_type == "movement":
             action = str(message.get("action") or "").strip().lower()
             if not action:
@@ -156,6 +210,10 @@ class WebsocketCommandNode(Node):
                     )
                 )
                 return
+            # If UI sends an emotion through movement channel, normalize it.
+            emotion = _normalize_emotion(action)
+            if emotion:
+                action = f"emotion:{emotion}"
             msg = String()
             msg.data = action
             self._movement_pub.publish(msg)
