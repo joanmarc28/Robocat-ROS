@@ -20,6 +20,8 @@ _DEADBAND_DEG = 2.5
 _MAX_DELTA_DEG_PER_STEP = 4.0
 _RELEASE_AFTER_MOVE = False
 _RELEASE_DELAY_SEC = 0.25
+_SERVO_MIN_ANGLE = 3
+_SERVO_MAX_ANGLE = 177
 _last_servo_angles = {}
 servos = []
 for i in range(16):
@@ -28,7 +30,7 @@ for i in range(16):
 
 
 def _normalize_angle(angle):
-    return int(round(max(0, min(180, angle))))
+    return int(round(max(_SERVO_MIN_ANGLE, min(_SERVO_MAX_ANGLE, angle))))
 
 
 def _apply_servo_angle(servo_obj, angle):

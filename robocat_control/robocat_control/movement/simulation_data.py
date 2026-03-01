@@ -14,7 +14,7 @@ position_states = {
     "sit"  :            ( 0,  -1/2),
     "sit_down"  :       ( 0,  -0.35),
     "normal":           (0.5, -0.5),
-    "recte":            (0, -1),
+    "recte":            (0, -0.92),
     "strech":           (math.cos(math.pi/3), math.sin(math.pi/3)),
     "front_zero":       (1, 0),
     "back_zero":        (-1, 0),
