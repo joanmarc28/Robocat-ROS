@@ -15,6 +15,7 @@ pca = PCA9685(i2c)
 pca.frequency = 50  # 50Hz és l’estàndard per a servos
 
 # Inicialitza els 10 primers canals com a servos
+_i2c_lock = threading.Lock()
 servos = []
 for i in range(16):
     s = servo.Servo(pca.channels[i], min_pulse=500, max_pulse=2500)
@@ -44,21 +45,14 @@ class Pota:
             down = lambda a : 180 - a
         
         correction_factor = (up, down)
-        steps = int(t/0.1)
+        steps = max(1, int(t / 0.1))
+        delay = t / steps
 
         pos_steps = position_steps(old_pos, new_pos, steps, inter_method, correction_factor)
 
         up_steps = [pos[0] for pos in pos_steps]
         down_steps = [pos[1] for pos in pos_steps]
-        print(up_steps, down_steps)
-        t1 = threading.Thread(target=new_angles, args=(self.servo_up,up_steps,t/steps))
-        t1.start()
-        
-        t2 = threading.Thread(target=new_angles, args=(self.servo_down,down_steps,t/steps))
-        t2.start()
-
-        t1.join()
-        t2.join()
+        new_angles_pair(self.servo_up, up_steps, self.servo_down, down_steps, delay)
 
 
     def up(self):
@@ -215,6 +209,8 @@ class EstructuraPotes:
                 self.body_upward()
             elif direction == 'd': 
                 self.body_downward()
+            else:
+                raise ValueError(f"Unknown body direction '{direction}'")
         
         #LEG
         elif type(leg_n) == int:
@@ -229,6 +225,11 @@ class EstructuraPotes:
             elif direction == 'ff':
                 leg.forward()
                 leg.forward()
+            elif direction == 'bb':
+                leg.backward()
+                leg.backward()
+            else:
+                raise ValueError(f"Unknown leg direction '{direction}'")
         else:
             legs = [legs[i] for i in leg_n]
             for leg in legs:
@@ -250,23 +251,17 @@ class EstructuraPotes:
     def follow_sequance(self, sequance, cycles=1, t = 1):
         """states = self.init_bot()"""
         states = self.get_states()
-        print(f"Initial states: {states}")
 
         for order in sequance["start"]:
             states = self.follow_order(order, states, t)
-            print(f"After order {order}: {states}")
         
         for _ in range(cycles):
             for order in sequance["cycle"]:
                 #if self.ultrasons and self.ultrasons.mesura_distancia() > config.LLINDAR_ULTRASONIC:
                 states = self.follow_order(order, states, t)
-                print(f"After order {order}: {states}")
             
         for order in sequance["end"]:
             states = self.follow_order(order, states, t)
-            print(f"After order {order}: {states}")
-        
-        print(f"Final states: {states}")
 
 def get_angle(state,right):
     (up, down) = position(state)
