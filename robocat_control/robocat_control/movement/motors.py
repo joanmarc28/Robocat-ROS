@@ -88,10 +88,10 @@ class EstructuraPotes:
         self.ultrasons = ultrasons
 
         self.legs = [
-            Pota(servos[10], servos[11], True,True),  # Pota 1
-            Pota(servos[12], servos[13], False,True),  # Pota 2
-            Pota(servos[2], servos[3], True, False),  # Pota 3
-            Pota(servos[6], servos[5], False, False)   # Pota 4
+            Pota(servos[8], servos[7], True,True),  # Pota 1
+            Pota(servos[10], servos[11], False,True),  # Pota 2
+            Pota(servos[2], servos[1], True, False),  # Pota 3
+            Pota(servos[4], servos[5], False, False)   # Pota 4
         ]
         threads = []
 

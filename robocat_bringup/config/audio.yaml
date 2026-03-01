@@ -1,7 +1,7 @@
 speaker_node:
   ros__parameters:
     sounds_dir: "/home/robocat-v2/robocat_ws/src/Robocat-ROS/robocat_hw/assets/sounds_clean"
-    audio_device: "pulse"
+    audio_device: "plughw:1,0"
     tts_enabled: true
     tts_cmd: "espeak"
     tts_voice: "ca"
@@ -25,3 +25,4 @@ mic_node:
     publish_only_on_wake: false
     wake_threshold: 0.5
     pause_sec: 0.3
+
