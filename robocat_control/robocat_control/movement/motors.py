@@ -16,10 +16,27 @@ pca.frequency = 50  # 50Hz es l'estandard per a servos
 
 # Inicialitza els 10 primers canals com a servos
 _i2c_lock = threading.Lock()
+_DEADBAND_DEG = 1.0
+_last_servo_angles = {}
 servos = []
 for i in range(16):
     s = servo.Servo(pca.channels[i], min_pulse=500, max_pulse=2500)
     servos.append(s)
+
+
+def _normalize_angle(angle):
+    return int(round(max(0, min(180, angle))))
+
+
+def _apply_servo_angle(servo_obj, angle):
+    target = _normalize_angle(angle)
+    key = id(servo_obj)
+    prev = _last_servo_angles.get(key)
+    if prev is not None and abs(target - prev) < _DEADBAND_DEG:
+        return False
+    servo_obj.angle = target
+    _last_servo_angles[key] = target
+    return True
 
 
 class Pota:
@@ -31,7 +48,7 @@ class Pota:
         self.front = front
         self.old_state = "start"
 
-    def set_new_position(self,t, inter_method='linear'):
+    def _planned_steps(self, steps, inter_method="linear"):
         new_pos = position(self.state)
         old_pos = position(self.old_state)
 
@@ -45,14 +62,23 @@ class Pota:
             down = lambda a : 180 - a
         
         correction_factor = (up, down)
-        steps = max(1, int(t / 0.1))
-        delay = t / steps
-
         pos_steps = position_steps(old_pos, new_pos, steps, inter_method, correction_factor)
 
         up_steps = [pos[0] for pos in pos_steps]
         down_steps = [pos[1] for pos in pos_steps]
-        new_angles_pair(self.servo_up, up_steps, self.servo_down, down_steps, delay)
+        return up_steps, down_steps
+
+    def set_new_position(self, t, inter_method="linear"):
+        # Force linear interpolation to reduce oscillations.
+        inter_method = "linear"
+        steps = max(1, int(t / 0.1))
+        delay = t / steps
+        up_steps, down_steps = self._planned_steps(steps, inter_method)
+        for up_angle, down_angle in zip(up_steps, down_steps):
+            with _i2c_lock:
+                _apply_servo_angle(self.servo_up, up_angle)
+                _apply_servo_angle(self.servo_down, down_angle)
+            time.sleep(delay)
 
 
     def up(self):
@@ -87,15 +113,24 @@ class EstructuraPotes:
             Pota(servos[2], servos[1], True, False),  # Pota 3
             Pota(servos[5], servos[4], False, False)   # Pota 4
         ]
-        threads = []
+        self._move_legs(self.legs, t=0.3, inter_method="linear")
 
-        for leg in self.legs:
-            t = threading.Thread(target=leg.set_new_position, args=(0.3,))
-            threads.append(t)
-            t.start()
+    def _move_legs(self, legs, t=0.3, inter_method="linear"):
+        # Force linear interpolation globally to reduce jitter.
+        inter_method = "linear"
+        steps = max(1, int(t / 0.1))
+        delay = t / steps
+        trajectories = []
+        for leg in legs:
+            up_steps, down_steps = leg._planned_steps(steps, inter_method)
+            trajectories.append((leg.servo_up, up_steps, leg.servo_down, down_steps))
 
-        for t in threads:
-            t.join()
+        for idx in range(steps):
+            with _i2c_lock:
+                for servo_up, up_steps, servo_down, down_steps in trajectories:
+                    _apply_servo_angle(servo_up, up_steps[idx])
+                    _apply_servo_angle(servo_down, down_steps[idx])
+            time.sleep(delay)
     
     def set_body_state(self,text):
         for leg in self.legs:
@@ -104,14 +139,7 @@ class EstructuraPotes:
     def set_position(self,text):
         for leg in self.legs:
             leg.set_state(text)
-        threads = []
-        for leg in self.legs:
-            th = threading.Thread(target=leg.set_new_position, args=(0.3,))
-            threads.append(th)
-            th.start()
-
-        for th in threads:
-            th.join()
+        self._move_legs(self.legs, t=0.3, inter_method="linear")
 
     def body_forward(self):
         for leg in self.legs:
@@ -139,14 +167,7 @@ class EstructuraPotes:
         self.legs[0].set_state("up")
         self.legs[1].set_state("up")
 
-        threads = []
-        for leg in self.legs:
-            th = threading.Thread(target=leg.set_new_position, args=(t,))
-            threads.append(th)
-            th.start()
-
-        for th in threads:
-            th.join()
+        self._move_legs(self.legs, t=t, inter_method="linear")
         
             
     def strech(self, t=0.2):
@@ -159,14 +180,7 @@ class EstructuraPotes:
         self.legs[0].set_state("front_zero")
         self.legs[1].set_state("front_zero")
 
-        threads = []
-        for leg in self.legs:
-            th = threading.Thread(target=leg.set_new_position, args=(t,))
-            threads.append(th)
-            th.start()
-
-        for th in threads:
-            th.join()
+        self._move_legs(self.legs, t=t, inter_method="linear")
         
 
     def init_bot(self, t=0.2):
@@ -176,14 +190,7 @@ class EstructuraPotes:
             else:
                 leg.set_state("back_zero")
     
-        threads = []
-        for leg in self.legs:
-            th = threading.Thread(target=leg.set_new_position, args=(t,))
-            threads.append(th)
-            th.start()
-
-        for th in threads:
-            th.join()
+        self._move_legs(self.legs, t=t, inter_method="linear")
 
     #set_positions
     def get_states(self):
@@ -195,9 +202,7 @@ class EstructuraPotes:
         inter_method = 'linear'
 
         direction, leg_n, method = order
-        
-        if method == 'p':
-            inter_method = 'parabolic'
+        _ = method
 
         #BODY
         if leg_n == 4:
@@ -237,15 +242,8 @@ class EstructuraPotes:
 
         new_states = self.get_states()
 
-        #Function move Body
-        threads = []
-        for leg in legs:
-            th = threading.Thread(target=leg.set_new_position, args=(t,inter_method))
-            threads.append(th)
-            th.start()
-
-        for th in threads:
-            th.join()
+        # Function move Body (single synchronized loop, no per-leg threads).
+        self._move_legs(legs, t=t, inter_method=inter_method)
         return new_states
 
     def follow_sequance(self, sequance, cycles=1, t = 1):
@@ -279,13 +277,14 @@ def new_angle(servo,angle_final,angle_inicial, duracio, passos=30):
 
     for i in range(passos + 1):
         angle_actual = angle_inicial + i * pas
-        servo.angle = max(0, min(180, angle_actual))  # Proteccio limits
+        with _i2c_lock:
+            _apply_servo_angle(servo, angle_actual)
         time.sleep(delay)
 
 def new_angles(servo,angles, delay):
     for angle in angles:
         with _i2c_lock:
-            servo.angle = max(0, min(180, angle))  # Proteccio limits
+            _apply_servo_angle(servo, angle)
         time.sleep(delay)
 
 def new_angles_pair(servo_a, angles_a, servo_b, angles_b, delay):
@@ -293,8 +292,8 @@ def new_angles_pair(servo_a, angles_a, servo_b, angles_b, delay):
         raise ValueError("angles_a and angles_b must have the same length")
     for angle_a, angle_b in zip(angles_a, angles_b):
         with _i2c_lock:
-            servo_a.angle = max(0, min(180, angle_a))
-            servo_b.angle = max(0, min(180, angle_b))
+            _apply_servo_angle(servo_a, angle_a)
+            _apply_servo_angle(servo_b, angle_b)
         time.sleep(delay)
 
 # Crear potes (ajusta els canals segons com els tinguis connectats)
@@ -305,7 +304,8 @@ def set_servo_angle(index, angle):
         raise ValueError("Index de servo fora de rang.")
     if not (0 <= angle <= 180):
         raise ValueError("L'angle ha de ser entre 0 i 180 graus.")
-    servos[index].angle = angle
+    with _i2c_lock:
+        _apply_servo_angle(servos[index], angle)
 
 def sweep_servo(index, delay=0.01):
     """Mou el servo d'un extrem a l'altre per provar el rang complet."""
@@ -314,12 +314,14 @@ def sweep_servo(index, delay=0.01):
 
     # Anada: de 0 a 180 graus
     for angle in range(0, 181, 1):
-        servos[index].angle = angle
+        with _i2c_lock:
+            _apply_servo_angle(servos[index], angle)
         time.sleep(delay)
 
     # Tornada: de 180 a 0 graus
     for angle in range(180, -1, -1):
-        servos[index].angle = angle
+        with _i2c_lock:
+            _apply_servo_angle(servos[index], angle)
         time.sleep(delay)
 
 def mou_cap(index=15, temps_gir=0.4, pausa=0.2, intensitat=30):
@@ -330,25 +332,32 @@ def mou_cap(index=15, temps_gir=0.4, pausa=0.2, intensitat=30):
       Ex: intensitat=30 -> 120 dreta, 60 esquerra
     """
     # DRETA
-    servos[index].angle = 94 + intensitat
+    with _i2c_lock:
+        _apply_servo_angle(servos[index], 94 + intensitat)
     time.sleep(temps_gir)
-    servos[index].angle = 94
+    with _i2c_lock:
+        _apply_servo_angle(servos[index], 94)
     time.sleep(pausa)
 
     # ESQUERRA
-    servos[index].angle = 94 - intensitat
+    with _i2c_lock:
+        _apply_servo_angle(servos[index], 94 - intensitat)
     time.sleep(temps_gir)
-    servos[index].angle = 94
+    with _i2c_lock:
+        _apply_servo_angle(servos[index], 94)
     time.sleep(pausa)
 
 
 def test_aturada(servo = servos[15]):
     print("Buscant el punt d'aturada...")
     for angle in range(85, 96):  # Prova valors entre 85 i 95
-        servo.angle = angle
+        with _i2c_lock:
+            _apply_servo_angle(servo, angle)
         print(f"Provat angle: {angle}")
         time.sleep(1)
-        servo.angle = 94  # pausa entre intents
+        with _i2c_lock:
+            _apply_servo_angle(servo, 94)  # pausa entre intents
         time.sleep(0.3)
 
-servos[15].angle = 94  # pausa entre intents
+with _i2c_lock:
+    _apply_servo_angle(servos[15], 94)  # pausa entre intents
