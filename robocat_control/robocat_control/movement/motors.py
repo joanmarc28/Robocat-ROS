@@ -9,10 +9,10 @@ from adafruit_pca9685 import PCA9685
 
 from robocat_control.movement.simulation_data import *  # noqa: F403
 from robocat_control.movement.inverse_kinematics.steps import position_steps
-# Inicialització del bus I2C i la controladora PCA9685
+# Inicialitzacio del bus I2C i la controladora PCA9685
 i2c = busio.I2C(board.SCL, board.SDA)
 pca = PCA9685(i2c)
-pca.frequency = 50  # 50Hz és l’estàndard per a servos
+pca.frequency = 50  # 50Hz es l'estandard per a servos
 
 # Inicialitza els 10 primers canals com a servos
 _i2c_lock = threading.Lock()
@@ -77,7 +77,7 @@ class Pota:
     
 
 class EstructuraPotes:
-    """Classe per gestionar les potes del quadrúpede."""
+    """Classe per gestionar les potes del quadrupede."""
     def __init__(self, ultrasons: Optional[object] = None):
         self.ultrasons = ultrasons
 
@@ -279,12 +279,22 @@ def new_angle(servo,angle_final,angle_inicial, duracio, passos=30):
 
     for i in range(passos + 1):
         angle_actual = angle_inicial + i * pas
-        servo.angle = max(0, min(180, angle_actual))  # Protecció límits
+        servo.angle = max(0, min(180, angle_actual))  # Proteccio limits
         time.sleep(delay)
 
 def new_angles(servo,angles, delay):
     for angle in angles:
-        servo.angle = max(0, min(180, angle))  # Protecció límits
+        with _i2c_lock:
+            servo.angle = max(0, min(180, angle))  # Proteccio limits
+        time.sleep(delay)
+
+def new_angles_pair(servo_a, angles_a, servo_b, angles_b, delay):
+    if len(angles_a) != len(angles_b):
+        raise ValueError("angles_a and angles_b must have the same length")
+    for angle_a, angle_b in zip(angles_a, angles_b):
+        with _i2c_lock:
+            servo_a.angle = max(0, min(180, angle_a))
+            servo_b.angle = max(0, min(180, angle_b))
         time.sleep(delay)
 
 # Crear potes (ajusta els canals segons com els tinguis connectats)
@@ -314,10 +324,10 @@ def sweep_servo(index, delay=0.01):
 
 def mou_cap(index=15, temps_gir=0.4, pausa=0.2, intensitat=30):
     """
-    Mou un servo de 360° des de posició aturada cap a dreta i esquerra.
+    Mou un servo de 360 graus des de posicio aturada cap a dreta i esquerra.
 
     - intensitat: valor entre 0 i 90 (es suma/resta a 90)
-      Ex: intensitat=30 → 120 dreta, 60 esquerra
+      Ex: intensitat=30 -> 120 dreta, 60 esquerra
     """
     # DRETA
     servos[index].angle = 94 + intensitat
@@ -333,7 +343,7 @@ def mou_cap(index=15, temps_gir=0.4, pausa=0.2, intensitat=30):
 
 
 def test_aturada(servo = servos[15]):
-    print("Buscant el punt d’aturada...")
+    print("Buscant el punt d'aturada...")
     for angle in range(85, 96):  # Prova valors entre 85 i 95
         servo.angle = angle
         print(f"Provat angle: {angle}")
