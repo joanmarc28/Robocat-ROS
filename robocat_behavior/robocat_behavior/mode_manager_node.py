@@ -134,7 +134,9 @@ class ModeManagerNode(Node):
             return
         if lower.startswith("emotion:"):
             emotion = self._normalize_emotion_token(lower.split(":", 1)[1].strip())
-            self._emit(Action(audio_emotion=emotion, oled_anim=emotion))
+            # Eye animation for explicit emotion commands is handled by behavior_node
+            # to avoid concurrent publishers resetting frame sequences.
+            self._emit(Action(audio_emotion=emotion))
             return
         if lower.startswith("say:"):
             self._emit(Action(audio_say=raw.split(":", 1)[1].strip()))
@@ -143,7 +145,7 @@ class ModeManagerNode(Node):
         # Convenience: allow direct emotion commands from web/UI buttons.
         if lower in {"default", "happy", "sad", "angry", "scared", "disgusted", "surprised", "patrol"}:
             emotion = self._normalize_emotion_token(lower)
-            self._emit(Action(audio_emotion=emotion, oled_anim=emotion))
+            self._emit(Action(audio_emotion=emotion))
             return
 
         # default: treat as movement command passthrough
