@@ -86,6 +86,7 @@ class BehaviorNode(Node):
         )
         self.declare_parameter("min_repeat_sec", 1.0)
         self.declare_parameter("event_anim_hold_sec", 2.5)
+        self.declare_parameter("event_anim_min_show_sec", 1.2)
         self.declare_parameter("cat_idle_anim", "default")
         self.declare_parameter("city_idle_anim", "default")
         self.declare_parameter("police_idle_anim", "default")
@@ -185,11 +186,10 @@ class BehaviorNode(Node):
         self._event_anim_active = True
         self._event_anim_name = (anim or "").strip().lower()
         hold = float(self.get_parameter("event_anim_hold_sec").value)
-        # hold <= 0 means "no timeout": wait for OLED done/stopped state.
-        if hold > 0.0:
-            self._event_anim_deadline = time.time() + hold
-        else:
-            self._event_anim_deadline = 0.0
+        min_show = max(0.0, float(self.get_parameter("event_anim_min_show_sec").value))
+        # Keep the emotion visible at least min_show seconds.
+        target = max(hold, min_show)
+        self._event_anim_deadline = time.time() + target if target > 0.0 else 0.0
 
     def _on_oled_anim_state(self, msg: String) -> None:
         state = (msg.data or "").strip().lower()
@@ -210,6 +210,10 @@ class BehaviorNode(Node):
             return
         if self._event_anim_name and anim_name != self._event_anim_name:
             # Ignore unrelated idle/default stop events.
+            return
+
+        # Prevent too-fast return to idle if one-shot animation ends quickly.
+        if self._event_anim_deadline > 0.0 and time.time() < self._event_anim_deadline:
             return
 
         self._event_anim_active = False

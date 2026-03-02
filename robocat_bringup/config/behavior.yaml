@@ -35,6 +35,7 @@ behavior_node:
     happy_song_files: ["Neon_Guardian.wav", "Neon_Prowler.wav", "Robocat_on_Patrol.wav"]
     min_repeat_sec: 1.0
     event_anim_hold_sec: 0.0
+    event_anim_min_show_sec: 1.2
     cat_idle_anim: "default"
     city_idle_anim: "city"
     police_idle_anim: "patrol"
