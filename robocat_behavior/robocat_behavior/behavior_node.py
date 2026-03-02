@@ -130,6 +130,9 @@ class BehaviorNode(Node):
             String, self.get_parameter("command_topic").value, self._on_command, 10
         )
         self.create_subscription(
+            String, self.get_parameter("audio_emotion_topic").value, self._on_audio_emotion, 10
+        )
+        self.create_subscription(
             String, self.get_parameter("wake_topic").value, self._on_wake, 10
         )
         self.create_subscription(
@@ -262,6 +265,12 @@ class BehaviorNode(Node):
         emotion = self._normalize_emotion_token(lower)
         if emotion:
             self._set_event_anim(emotion)
+
+    def _on_audio_emotion(self, msg: String) -> None:
+        emotion = self._normalize_emotion_token(msg.data)
+        if not emotion or emotion == "default":
+            return
+        self._set_event_anim(emotion)
 
     def _maybe_sing_happy(self) -> None:
         if not bool(self.get_parameter("happy_sing_enabled").value):
