@@ -198,6 +198,19 @@ class BehaviorNode(Node):
         state = (msg.data or "").strip().lower()
         if not state:
             return
+        if state.startswith("started:"):
+            anim_state = state.split(":", 1)[1].strip()
+            anim_name = anim_state.split("|", 1)[0].strip()
+            if not anim_name:
+                return
+            idle = self._idle_anim().strip().lower()
+            if anim_name != idle:
+                min_show = max(0.0, float(self.get_parameter("event_anim_min_show_sec").value))
+                self._event_anim_active = True
+                self._event_anim_name = anim_name
+                self._event_anim_deadline = time.time() + min_show if min_show > 0.0 else 0.0
+            return
+
         if not (state.startswith("done:") or state.startswith("stopped:")):
             return
         if not self._event_anim_active:
