@@ -324,7 +324,7 @@ class BehaviorNode(Node):
         else:
             self._send("oled_text", "Matricula detectada", self._pub_oled_text)
         self._set_event_anim(str(self.get_parameter("police_detect_anim").value))
-        self._send("audio_emotion", "siren", self._pub_audio_emotion)
+        self._send("audio_emotion", "patrol", self._pub_audio_emotion)
         self._send("movement", "rotar", self._pub_move)
 
     def _handle_city(self, event_type: str) -> None:

@@ -249,7 +249,7 @@ class ModeManagerNode(Node):
                     movement="rotar",
                     oled_anim="patrol",
                     oled_text=text,
-                    audio_emotion="siren",
+                    audio_emotion="patrol",
                 )
             if event_type.startswith("human_emotion_angry"):
                 return Action(movement="walk_back", oled_anim="angry", audio_emotion="angry")
